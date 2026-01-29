@@ -1,0 +1,274 @@
+# Product Roadmap – PR-Sized 15-Minute Task Checklist
+**Stack:** React Native · Tailwind (NativeWind) · Firebase  
+**Core Flows:** Photo → AI Description → User Confirmation → Voice/Text Corrections → Log Meal
+
+---
+
+## PR 1 — Project & Repo Setup
+
+### App Scaffolding
+- [ ] Install Node.js and Expo CLI
+- [ ] Create new Expo React Native app (TypeScript)
+- [ ] Run app on iOS simulator or Android emulator
+- [ ] Confirm hot reload works
+
+### Repo Setup
+- [ ] Initialize Git repository
+- [ ] Create initial GitHub repo
+- [ ] Push first commit
+
+---
+
+## PR 2 — Tailwind / NativeWind Setup
+
+### Styling Setup
+- [ ] Install NativeWind
+- [ ] Install Tailwind dependencies
+- [ ] Create `tailwind.config.js`
+- [ ] Add NativeWind Babel plugin
+
+### Validation
+- [ ] Create a test screen
+- [ ] Style text using Tailwind classes
+- [ ] Verify styles update on save
+
+---
+
+## PR 3 — Firebase Project Setup
+
+### Firebase Console
+- [ ] Create Firebase project
+- [ ] Enable Firebase Authentication
+- [ ] Enable Firestore database
+- [ ] Enable Cloud Storage
+
+### App Integration
+- [ ] Install Firebase SDK packages
+- [ ] Add Firebase config file
+- [ ] Initialize Firebase in app
+- [ ] Confirm app connects without errors
+
+---
+
+## PR 4 — Authentication (Required for Storage & DB)
+
+### Backend
+- [ ] Enable Anonymous Authentication in Firebase
+- [ ] Enable Email Authentication (optional)
+
+### Frontend
+- [ ] Add auth state listener
+- [ ] Store user ID in app state
+- [ ] Show loading screen while auth initializes
+
+---
+
+## PR 5 — Chat Screen Foundation
+
+### UI Layout
+- [ ] Create Chat screen component
+- [ ] Add scrollable message list
+- [ ] Add text input field
+- [ ] Add send button
+
+### Styling
+- [ ] Style user messages
+- [ ] Style assistant messages
+- [ ] Add spacing and padding
+
+---
+
+## PR 6 — Firestore Chat Data Model
+
+### Firestore Setup
+- [ ] Create `conversations` collection
+- [ ] Create `messages` collection
+- [ ] Define message fields (role, text, timestamp)
+
+### Client Logic
+- [ ] Subscribe to messages with Firestore listener
+- [ ] Render messages in order
+- [ ] Auto-scroll on new messages
+
+---
+
+## PR 7 — Sending Text Messages
+
+### Client
+- [ ] Capture text input
+- [ ] Disable send button when empty
+- [ ] Clear input after sending
+
+### Firestore
+- [ ] Write user message to Firestore
+- [ ] Add timestamp and role
+
+---
+
+## PR 8 — Image Capture & Upload
+
+### Client
+- [ ] Request camera permissions
+- [ ] Open camera or photo library
+- [ ] Preview selected image
+- [ ] Upload image to Firebase Storage
+
+### Firestore
+- [ ] Save image URL in a message document
+- [ ] Mark message as `type: image`
+
+---
+
+## PR 9 — Cloud Functions Setup
+
+### Backend
+- [ ] Install Firebase Functions CLI
+- [ ] Initialize Functions project (TypeScript)
+- [ ] Deploy test function
+- [ ] Confirm logs appear in Firebase console
+
+---
+
+## PR 10 — Image Recognition Pipeline
+
+### Backend
+- [ ] Trigger function on image upload
+- [ ] Resize image
+- [ ] Send image to vision model
+- [ ] Parse detected foods
+
+### Firestore
+- [ ] Create assistant message with description
+- [ ] Save confidence score
+
+---
+
+## PR 11 — LLM Description Confirmation Flow
+
+### Backend
+- [ ] Send vision output to LLM
+- [ ] Generate natural-language description
+- [ ] Ask confirmation question:
+  - “Does this description match your meal?”
+
+### Client
+- [ ] Display assistant question
+- [ ] Show Yes / No buttons
+
+---
+
+## PR 12 — Meal Logging on Confirmation
+
+### Backend
+- [ ] Calculate calories & macros
+- [ ] Create `meals` document
+- [ ] Associate meal with image message
+
+### Client
+- [ ] Show “Meal logged” confirmation
+- [ ] Display calorie & macro summary
+
+---
+
+## PR 13 — Voice Input Setup (User Corrections)
+
+### Client
+- [ ] Install speech-to-text library
+- [ ] Request microphone permissions
+- [ ] Add microphone button to chat
+- [ ] Record voice input
+- [ ] Convert speech to text
+
+---
+
+## PR 14 — Voice-Based Corrections Flow
+
+### Client
+- [ ] Send transcribed text as message
+- [ ] Show “Processing correction…” state
+
+### Backend
+- [ ] Send correction text + meal context to LLM
+- [ ] Parse updated meal description
+- [ ] Recalculate calories & macros
+
+---
+
+## PR 15 — Update Meal After Voice/Text Corrections
+
+### Backend
+- [ ] Update meal document
+- [ ] Store original + updated values
+- [ ] Prevent duplicate logs
+
+### Client
+- [ ] Update displayed nutrition values
+- [ ] Show confirmation message
+
+---
+
+## PR 16 — Manual Text Corrections (Fallback)
+
+### Client
+- [ ] Allow typed corrections
+- [ ] Reuse voice correction logic
+- [ ] Display updated macros inline
+
+---
+
+## PR 17 — Meal History & Daily Summary
+
+### Backend
+- [ ] Query meals by date
+- [ ] Calculate daily totals
+
+### Client
+- [ ] Create daily summary screen
+- [ ] Display calories & macros
+- [ ] List meals for the day
+
+---
+
+## PR 18 — Error Handling & Beginner Safety
+
+### Client
+- [ ] Handle failed uploads
+- [ ] Handle AI errors gracefully
+- [ ] Show retry options
+
+### Backend
+- [ ] Validate all AI responses
+- [ ] Add fallback messages when unsure
+
+---
+
+## PR 19 — Onboarding & Help
+
+### UX
+- [ ] Welcome message explaining flow
+- [ ] Example image prompt
+- [ ] Voice correction explanation
+
+---
+
+## How to Use This Roadmap
+
+- Each checkbox ≈ **15 minutes**
+- Each PR ≈ **1–2 hours**
+- You can stop after any PR and still have a working app
+- Every step builds confidence and understanding
+
+---
+
+## Beginner Tip (Important)
+
+If something feels confusing:
+- Skip it
+- Stub it
+- Move on
+
+Momentum matters more than perfection.
+
+
+
+
