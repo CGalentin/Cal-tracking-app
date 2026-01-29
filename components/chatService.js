@@ -10,7 +10,8 @@ import {
     serverTimestamp,
     setDoc,
 } from 'firebase/firestore';
-import { auth, db } from './firebaseConfig';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { auth, db, storage } from './firebaseConfig';
 
 /**
  * Get or create a conversation document for the current user
@@ -54,14 +55,46 @@ export const subscribeToMessages = (conversationId, callback) => {
 };
 
 /**
- * Send a message to Firestore
+ * Send a text message to Firestore
  */
 export const sendMessage = async (conversationId, role, text) => {
   const messagesRef = collection(db, 'conversations', conversationId, 'messages');
-  
   await addDoc(messagesRef, {
-    role, // 'user' or 'assistant'
+    role,
     text,
+    type: 'text',
     timestamp: serverTimestamp(),
   });
+};
+
+/**
+ * Upload image to Firebase Storage and save image message in Firestore
+ * @param {string} conversationId
+ * @param {string} role - 'user' or 'assistant'
+ * @param {string} uri - local file URI (e.g. from ImagePicker)
+ * @returns {Promise<string>} download URL
+ */
+export const uploadImageAndSendMessage = async (conversationId, role, uri) => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('User must be authenticated');
+
+  const filename = `images/${conversationId}/${Date.now()}.jpg`;
+  const storageRef = ref(storage, filename);
+
+  const response = await fetch(uri);
+  const blob = await response.blob();
+
+  await uploadBytes(storageRef, blob);
+  const imageUrl = await getDownloadURL(storageRef);
+
+  const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+  await addDoc(messagesRef, {
+    role,
+    type: 'image',
+    text: '',
+    imageUrl,
+    timestamp: serverTimestamp(),
+  });
+
+  return imageUrl;
 };

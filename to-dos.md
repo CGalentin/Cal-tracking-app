@@ -95,27 +95,27 @@
 ## PR 7 — Sending Text Messages
 
 ### Client
-- [ ] Capture text input
-- [ ] Disable send button when empty
-- [ ] Clear input after sending
+- [x] Capture text input (`inputText` state, `TextInput` in `app/chat.tsx`)
+- [x] Disable send button when empty (`disabled={!inputText.trim()}`)
+- [x] Clear input after sending (`setInputText('')` in `handleSend`)
 
 ### Firestore
-- [ ] Write user message to Firestore
-- [ ] Add timestamp and role
+- [x] Write user message to Firestore (`sendMessage` in `chatService.js`)
+- [x] Add timestamp and role (`role`, `text`, `timestamp: serverTimestamp()`)
 
 ---
 
 ## PR 8 — Image Capture & Upload
 
 ### Client
-- [ ] Request camera permissions
-- [ ] Open camera or photo library
-- [ ] Preview selected image
-- [ ] Upload image to Firebase Storage
+- [x] Request camera permissions (`requestMediaLibraryPermissionsAsync` in `app/chat.tsx`)
+- [x] Open camera or photo library (`launchImageLibraryAsync` via expo-image-picker)
+- [x] Preview selected image (thumbnail + Cancel/Send photo in chat input area)
+- [x] Upload image to Firebase Storage (`uploadImageAndSendMessage` in `chatService.js`)
 
 ### Firestore
-- [ ] Save image URL in a message document
-- [ ] Mark message as `type: image`
+- [x] Save image URL in a message document (`imageUrl` field)
+- [x] Mark message as `type: image`
 
 ---
 
