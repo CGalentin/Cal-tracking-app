@@ -1,0 +1,67 @@
+// chatService.js
+import {
+    addDoc,
+    collection,
+    doc,
+    getDoc,
+    onSnapshot,
+    orderBy,
+    query,
+    serverTimestamp,
+    setDoc,
+} from 'firebase/firestore';
+import { auth, db } from './firebaseConfig';
+
+/**
+ * Get or create a conversation document for the current user
+ * Returns the conversation ID
+ */
+export const getOrCreateConversation = async () => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('User must be authenticated');
+
+  const conversationId = user.uid; // One conversation per user
+  const conversationRef = doc(db, 'conversations', conversationId);
+
+  const conversationSnap = await getDoc(conversationRef);
+  if (!conversationSnap.exists()) {
+    // Create new conversation
+    await setDoc(conversationRef, {
+      userId: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  return conversationId;
+};
+
+/**
+ * Subscribe to messages in a conversation
+ * Returns an unsubscribe function
+ */
+export const subscribeToMessages = (conversationId, callback) => {
+  const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+  const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+  return onSnapshot(q, (snapshot) => {
+    const messages = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    callback(messages);
+  });
+};
+
+/**
+ * Send a message to Firestore
+ */
+export const sendMessage = async (conversationId, role, text) => {
+  const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+  
+  await addDoc(messagesRef, {
+    role, // 'user' or 'assistant'
+    text,
+    timestamp: serverTimestamp(),
+  });
+};

@@ -13,9 +13,9 @@
 - [x] Confirm hot reload works
 
 ### Repo Setup
-- [ ] Initialize Git repository
-- [ ] Create initial GitHub repo
-- [ ] Push first commit
+- [x] Initialize Git repository
+- [x] Create initial GitHub repo
+- [x] Push first commit
 
 ---
 
@@ -30,7 +30,7 @@
 ### Validation
 - [x] Create a test screen (`app/test-tailwind.tsx`)
 - [x] Style text using Tailwind classes
-- [ ] Verify styles update on save (test after restarting Expo)
+- [x] Verify styles update on save (test after restarting Expo)
 
 ---
 
@@ -39,7 +39,7 @@
 ### Firebase Console
 - [x] Create Firebase project
 - [x] Enable Firebase Authentication
-- [ ] Enable Firestore database (verify in Firebase Console)
+- [x] Enable Firestore database (verify in Firebase Console)
 - [ ] Enable Cloud Storage (verify in Firebase Console)
 
 ### App Integration
@@ -53,7 +53,7 @@
 ## PR 4 — Authentication (Required for Storage & DB)
 
 ### Backend
-- [ ] Enable Anonymous Authentication in Firebase (not needed - using email)
+- [x] Enable Anonymous Authentication in Firebase (not needed - using email)
 - [x] Enable Email Authentication (optional)
 
 ### Frontend
@@ -66,29 +66,29 @@
 ## PR 5 — Chat Screen Foundation
 
 ### UI Layout
-- [ ] Create Chat screen component
-- [ ] Add scrollable message list
-- [ ] Add text input field
-- [ ] Add send button
+- [x] Create Chat screen component (`app/chat.tsx`)
+- [x] Add scrollable message list
+- [x] Add text input field
+- [x] Add send button
 
 ### Styling
-- [ ] Style user messages
-- [ ] Style assistant messages
-- [ ] Add spacing and padding
+- [x] Style user messages
+- [x] Style assistant messages
+- [x] Add spacing and padding
 
 ---
 
 ## PR 6 — Firestore Chat Data Model
 
 ### Firestore Setup
-- [ ] Create `conversations` collection
-- [ ] Create `messages` collection
-- [ ] Define message fields (role, text, timestamp)
+- [x] Create `conversations` collection (via `chatService.js`)
+- [x] Create `messages` collection (subcollection under conversations)
+- [x] Define message fields (role, text, timestamp)
 
 ### Client Logic
-- [ ] Subscribe to messages with Firestore listener
-- [ ] Render messages in order
-- [ ] Auto-scroll on new messages
+- [x] Subscribe to messages with Firestore listener (`subscribeToMessages`)
+- [x] Render messages in order (ordered by timestamp ascending)
+- [x] Auto-scroll on new messages (FlatList with `scrollToEnd`)
 
 ---
 

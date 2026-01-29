@@ -4,7 +4,6 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import 'react-native-reanimated';
-import '../global.css';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { subscribeToAuthChanges } from '../components/authService';
@@ -60,6 +59,7 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="chat" options={{ title: 'Chat', headerShown: true }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />
