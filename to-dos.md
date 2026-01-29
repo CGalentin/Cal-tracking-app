@@ -7,10 +7,10 @@
 ## PR 1 — Project & Repo Setup
 
 ### App Scaffolding
-- [ ] Install Node.js and Expo CLI
-- [ ] Create new Expo React Native app (TypeScript)
-- [ ] Run app on iOS simulator or Android emulator
-- [ ] Confirm hot reload works
+- [x] Install Node.js and Expo CLI
+- [x] Create new Expo React Native app (TypeScript)
+- [x] Run app on iOS simulator or Android emulator
+- [x] Confirm hot reload works
 
 ### Repo Setup
 - [ ] Initialize Git repository
@@ -22,44 +22,44 @@
 ## PR 2 — Tailwind / NativeWind Setup
 
 ### Styling Setup
-- [ ] Install NativeWind
-- [ ] Install Tailwind dependencies
-- [ ] Create `tailwind.config.js`
-- [ ] Add NativeWind Babel plugin
+- [x] Install NativeWind
+- [x] Install Tailwind dependencies
+- [x] Create `tailwind.config.js`
+- [x] Add NativeWind Babel plugin
 
 ### Validation
-- [ ] Create a test screen
-- [ ] Style text using Tailwind classes
-- [ ] Verify styles update on save
+- [x] Create a test screen (`app/test-tailwind.tsx`)
+- [x] Style text using Tailwind classes
+- [ ] Verify styles update on save (test after restarting Expo)
 
 ---
 
 ## PR 3 — Firebase Project Setup
 
 ### Firebase Console
-- [ ] Create Firebase project
-- [ ] Enable Firebase Authentication
-- [ ] Enable Firestore database
-- [ ] Enable Cloud Storage
+- [x] Create Firebase project
+- [x] Enable Firebase Authentication
+- [ ] Enable Firestore database (verify in Firebase Console)
+- [ ] Enable Cloud Storage (verify in Firebase Console)
 
 ### App Integration
-- [ ] Install Firebase SDK packages
-- [ ] Add Firebase config file
-- [ ] Initialize Firebase in app
-- [ ] Confirm app connects without errors
+- [x] Install Firebase SDK packages
+- [x] Add Firebase config file (`components/firebaseConfig.js`)
+- [x] Initialize Firebase in app
+- [x] Confirm app connects without errors
 
 ---
 
 ## PR 4 — Authentication (Required for Storage & DB)
 
 ### Backend
-- [ ] Enable Anonymous Authentication in Firebase
-- [ ] Enable Email Authentication (optional)
+- [ ] Enable Anonymous Authentication in Firebase (not needed - using email)
+- [x] Enable Email Authentication (optional)
 
 ### Frontend
-- [ ] Add auth state listener
-- [ ] Store user ID in app state
-- [ ] Show loading screen while auth initializes
+- [x] Add auth state listener (`app/_layout.tsx` with `subscribeToAuthChanges`)
+- [x] Store user ID in app state (via Firebase auth)
+- [x] Show loading screen while auth initializes
 
 ---
 
