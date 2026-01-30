@@ -4,10 +4,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import {
-    getOrCreateConversation,
-    sendMessage,
-    subscribeToMessages,
-    uploadImageAndSendMessage,
+  getOrCreateConversation,
+  sendMessage,
+  subscribeToMessages,
+  uploadImageAndSendMessage,
 } from '@/components/chatService';
 
 type Message = {
@@ -27,22 +27,29 @@ export default function ChatScreen() {
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  const sessionStartRef = useRef<number>(Date.now());
 
-  // Initialize conversation and subscribe to messages
+  // Initialize conversation and subscribe to messages (history stored in Firestore; only show this session)
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
 
     const initChat = async () => {
       try {
+        sessionStartRef.current = Date.now();
         const convId = await getOrCreateConversation();
         setConversationId(convId);
 
-        // Subscribe to messages
         unsubscribe = subscribeToMessages(convId, (firestoreMessages) => {
-          setMessages(firestoreMessages);
+          const sessionStart = sessionStartRef.current;
+          const sessionMessages = firestoreMessages.filter((m) => {
+            const ts = m.timestamp;
+            if (ts == null) return true;
+            const ms = typeof ts.toMillis === 'function' ? ts.toMillis() : ts?.seconds * 1000;
+            return typeof ms === 'number' && ms >= sessionStart;
+          });
+          setMessages(sessionMessages);
           setLoading(false);
-          
-          // Auto-scroll to bottom when new messages arrive
+
           setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
           }, 100);

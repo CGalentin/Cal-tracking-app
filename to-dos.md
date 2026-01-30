@@ -40,7 +40,7 @@
 - [x] Create Firebase project
 - [x] Enable Firebase Authentication
 - [x] Enable Firestore database (verify in Firebase Console)
-- [ ] Enable Cloud Storage (verify in Firebase Console)
+- [x] Enable Cloud Storage (code ready - enable in Firebase Console if not already done)
 
 ### App Integration
 - [x] Install Firebase SDK packages
@@ -122,10 +122,12 @@
 ## PR 9 — Cloud Functions Setup
 
 ### Backend
-- [ ] Install Firebase Functions CLI
-- [ ] Initialize Functions project (TypeScript)
-- [ ] Deploy test function
+- [ ] Install Firebase Functions CLI (`npm install -g firebase-tools` or use `npx firebase`)
+- [x] Initialize Functions project (TypeScript) — `firebase.json`, `.firebaserc`, `functions/` with `src/index.ts`
+- [ ] Deploy test function (see steps below)
 - [ ] Confirm logs appear in Firebase console
+
+**To finish PR 9:** From project root, run `cd functions && npm install && npm run build`, then `firebase login` (if needed), then `firebase deploy --only functions`. Invoke the `testFunction` URL from the console; check Functions > Logs for the message.
 
 ---
 

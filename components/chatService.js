@@ -1,14 +1,16 @@
 // chatService.js
 import {
-    addDoc,
-    collection,
-    doc,
-    getDoc,
-    onSnapshot,
-    orderBy,
-    query,
-    serverTimestamp,
-    setDoc,
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from './firebaseConfig';
@@ -97,4 +99,14 @@ export const uploadImageAndSendMessage = async (conversationId, role, uri) => {
   });
 
   return imageUrl;
+};
+
+/**
+ * Delete all messages in a conversation (clears chat history)
+ */
+export const clearAllMessages = async (conversationId) => {
+  const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+  const snapshot = await getDocs(messagesRef);
+  const deletes = snapshot.docs.map((d) => deleteDoc(d.ref));
+  await Promise.all(deletes);
 };
