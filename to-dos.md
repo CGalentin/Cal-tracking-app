@@ -122,12 +122,12 @@
 ## PR 9 — Cloud Functions Setup
 
 ### Backend
-- [ ] Install Firebase Functions CLI (`npm install -g firebase-tools` or use `npx firebase`)
+- [x] Install Firebase Functions CLI (`npm install -g firebase-tools` or use `npx firebase`)
 - [x] Initialize Functions project (TypeScript) — `firebase.json`, `.firebaserc`, `functions/` with `src/index.ts`
-- [ ] Deploy test function (see steps below)
-- [ ] Confirm logs appear in Firebase console
+- [x] Deploy test function (see steps below)
+- [x] Confirm logs appear in Firebase console
 
-**To finish PR 9:** From project root, run `cd functions && npm install && npm run build`, then `firebase login` (if needed), then `firebase deploy --only functions`. Invoke the `testFunction` URL from the console; check Functions > Logs for the message.
+**Done.** Deploy again from project root: `npx firebase deploy --only functions`. Invoke the `testFunction` URL; check Functions > Logs for the message.
 
 ---
 

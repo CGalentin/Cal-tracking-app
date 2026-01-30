@@ -181,10 +181,33 @@
   - `scripts/kill-ports.ps1` - PowerShell script to kill Node processes.
   - `scripts/kill-ports.cmd` - Batch file to kill Node processes.
 
+### Session: Resuming Project & PR 9 (Cloud Functions)
+
+- **Getting started (returning to project):**
+  - Commands: `npm install` then `npx expo start` (or `npm start`).
+  - Press `a` / `i` / `w` in the **same terminal** where Expo is running (no `$`); scan QR with Expo Go on phone.
+
+- **Chat: messages from yesterday still visible:**
+  - Messages persist in **Firebase Firestore** (one conversation per user). We kept that for chronological history/reporting.
+  - Chat UI now shows only **this session**: messages with `timestamp >= sessionStart` when you open the Chat tab. Old messages stay in Firestore but don’t appear in the list. Removed the “Clear chat” button that deleted messages.
+
+- **PR 9 — Cloud Functions setup:**
+  - Added `firebase.json` (functions source + predeploy) and `.firebaserc` (project `calorie-app-chat`).
+  - Created `functions/` with TypeScript: `package.json` (Node 20, firebase-admin, firebase-functions), `tsconfig.json` (moduleResolution: node), `src/index.ts` with HTTP `testFunction` (v1 API: `functions.https.onRequest`).
+  - Predeploy: `cd functions && npm install && npm run build` so the build runs inside `functions/` and finds `firebase-functions`. Node runtime set to **20** (Node 18 decommissioned).
+  - **CLI:** Don’t type `$` from docs (it’s the prompt). Use `npx firebase` if `firebase` isn’t in PATH. Login: `npx firebase login --no-localhost` → open URL in browser, sign in, then paste the **authorization code from the webpage** (not the session ID) into the terminal.
+  - Deploy: `npx firebase deploy --only functions` from project root. When asked how many days to keep container images, Enter = 1 day.
+  - Added `functions/lib/` to `.gitignore`.
+
+- **Security (CVE-2025-55182):**
+  - Console recommended updating React/Next.js. Project uses **React 19.1.2** (patched). Run `npm install` so dependencies match. Redeploy only if you deploy the app somewhere (e.g. Hosting); for local Expo, just run the app after `npm install`.
+
+- **Redeploy / Hosting:**
+  - Redeploy steps: `npm install`; for Expo locally, run `npx expo start` (no server deploy). For Firebase Hosting you’d add a `hosting` section to `firebase.json` and run `npx expo export --platform web` then `npx firebase deploy --only hosting` — not set up yet, so `npx firebase deploy --only hosting` correctly errors with “No targets match '--only hosting'”.
+
 ### Remaining / Future Tasks
 
 - Follow `to-dos.md` and `PRD.md` to build out:
-  - Cloud Functions setup (PR 9).
   - Image recognition pipeline (PR 10).
   - LLM description confirmation flow (PR 11).
   - Meal logging on confirmation (PR 12).
