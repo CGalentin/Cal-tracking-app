@@ -205,10 +205,45 @@
 - **Redeploy / Hosting:**
   - Redeploy steps: `npm install`; for Expo locally, run `npx expo start` (no server deploy). For Firebase Hosting you’d add a `hosting` section to `firebase.json` and run `npx expo export --platform web` then `npx firebase deploy --only hosting` — not set up yet, so `npx firebase deploy --only hosting` correctly errors with “No targets match '--only hosting'”.
 
+### Session: PR 10 — Image Recognition Pipeline (Trigger + Resize)
+
+- **React version mismatch (Expo start):**
+  - Error: "react and react-native-renderer must have the exact same version" (react 19.1.2 vs renderer 19.1.0).
+  - Fix: Pinned `react` and `react-dom` to **19.1.0** in `package.json`. Run `npm install` then `npx expo start --clear`.
+
+- **Metro: react-dom/client not found:**
+  - Error: "react-dom/client could not be found within the project or in node_modules."
+  - Fix: Added `metro.config.js` with a custom `resolveRequest` that resolves `'react-dom/client'` to `node_modules/react-dom/client.js` (so Metro finds the subpath export).
+
+- **PR 10 — Trigger on image upload:**
+  - Cloud Function **`onImageMessageCreated`** (Firestore v2): triggers on `conversations/{conversationId}/messages/{messageId}` when a new document is created.
+  - Only runs when the message has `type === 'image'` and `imageUrl`. Logs "Image message created" with conversationId, messageId, imageUrl.
+  - Uses `firebase-admin` and `onDocumentCreated` from `firebase-functions/v2/firestore`.
+
+- **PR 10 — Step 1: Resize image:**
+  - Added **`sharp`** to `functions/package.json`.
+  - **`downloadAndResizeImage(imageUrl)`** in `functions/src/index.ts`:
+    - Fetches image from `imageUrl` (Storage download URL).
+    - Resizes with sharp: max 1024px on longest side, `fit: "inside"`, no upscale, JPEG quality 85.
+    - Returns `{ buffer, width, height }` or `null` on failure. Logs "Image resized" with original/resized dimensions and sizeBytes.
+  - Function calls this after detecting an image message; on success logs "Resized image ready for vision" (resized buffer is ready for Step 2 — send to vision model).
+  - **`functions/tsconfig.json`:** Added `esModuleInterop: true` so `import sharp from "sharp"` works with sharp’s `export =` declaration.
+
+- **Intentional scope (no code after “send image to vision model”):**
+  - No assistant message is written to Firestore (no "Image received and resized…" or "Could not process image…" in chat).
+  - No parse, description, or confidence score. Pipeline stops at: trigger → download → resize → log. Next step is to implement **Step 2: Send image to vision model**, then parse and Firestore message/confidence.
+
+- **Firebase deploy / IAM:**
+  - If deploy fails with "We failed to modify the IAM policy", run the three `gcloud projects add-iam-policy-binding calorie-app-chat …` commands (as project owner) from the error output, then `npx firebase deploy --only functions` again.
+  - Deploy: from project root, `npx firebase deploy --only functions` (use a space: `npx firebase`, not `npxfirebase`).
+
+- **Stopping point:**
+  - PR 10 backend: trigger on image upload ✓; resize image ✓; send to vision model (not yet); parse detected foods (not yet). Firestore: no assistant message or confidence until vision is implemented.
+
 ### Remaining / Future Tasks
 
 - Follow `to-dos.md` and `PRD.md` to build out:
-  - Image recognition pipeline (PR 10).
+  - PR 10: Send image to vision model, parse foods, assistant message with description, confidence score.
   - LLM description confirmation flow (PR 11).
   - Meal logging on confirmation (PR 12).
   - Voice input setup (PR 13).

@@ -1,19 +1,12 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
-import { defineString } from "firebase-functions/params";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import sharp from "sharp";
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
-
-const db = admin.firestore();
-
-/** Gemini API key — set in Firebase/Cloud Console or: firebase functions:config:set gemini.apikey="YOUR_KEY" */
-const geminiApiKey = defineString("GEMINI_API_KEY", { description: "API key for Google Gemini (get one at https://aistudio.google.com/app/apikey)" });
 
 /** Max dimension (width or height) for resized image before sending to vision API. */
 const MAX_IMAGE_DIMENSION = 1024;
@@ -56,44 +49,6 @@ async function downloadAndResizeImage(imageUrl: string): Promise<{ buffer: Buffe
   };
 }
 
-const VISION_PROMPT = `Look at this image of a meal or food. In one or two short sentences, describe what food or meal is visible (e.g. "Grilled chicken breast with rice and broccoli" or "Caesar salad with bread"). List the main items. Be concise.`;
-
-/**
- * Step 2: Send image buffer to Gemini vision and get a short food description.
- * Returns the description text, or null if the API key is missing or the call fails.
- */
-async function sendImageToVision(imageBuffer: Buffer): Promise<{ description: string } | null> {
-  const apiKey = geminiApiKey.value();
-  if (!apiKey) {
-    logger.warn("GEMINI_API_KEY is not set. Set it in Cloud Console > Cloud Run > your function > Edit > Variables.");
-    return null;
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-  const imagePart = {
-    inlineData: {
-      data: imageBuffer.toString("base64"),
-      mimeType: "image/jpeg",
-    },
-  };
-
-  try {
-    const result = await model.generateContent([VISION_PROMPT, imagePart]);
-    const text = result.response.text()?.trim();
-    if (!text) {
-      logger.warn("Gemini returned empty text");
-      return null;
-    }
-    logger.info("Vision description received", { descriptionLength: text.length });
-    return { description: text };
-  } catch (err) {
-    logger.error("sendImageToVision failed", err);
-    return null;
-  }
-}
-
 /**
  * Test HTTP function for PR 9 — Cloud Functions Setup.
  * Hit the function URL to confirm deployment; check Firebase Console > Functions > Logs for the log line.
@@ -106,8 +61,8 @@ export const testFunction = functions.https.onRequest((req: unknown, res: { send
 /**
  * PR 10 — Image Recognition Pipeline: trigger when a user uploads an image.
  * Fires when a new message is created under a conversation. If the message is type "image",
- * we run the image pipeline (resize → vision → parse → Firestore). Placeholder implementation
- * logs and writes an assistant "processing" message; vision/parse come in follow-up tasks.
+ * we download and resize the image. resized.buffer is ready for Step 2 (send to vision model).
+ * No assistant message or parse/confidence until vision is implemented.
  */
 export const onImageMessageCreated = onDocumentCreated(
   "conversations/{conversationId}/messages/{messageId}",
@@ -129,7 +84,8 @@ export const onImageMessageCreated = onDocumentCreated(
     const { conversationId, messageId } = event.params;
     logger.info("Image message created", { conversationId, messageId, imageUrl });
 
-    // Step 1: Download and resize image (ready for vision step).
+    // Step 1: Download and resize image. Step 2: send to vision (not yet implemented).
+    // No Firestore assistant message or parse/confidence until after vision is wired.
     let resized: { buffer: Buffer; width: number; height: number } | null = null;
     try {
       resized = await downloadAndResizeImage(imageUrl);
@@ -137,41 +93,9 @@ export const onImageMessageCreated = onDocumentCreated(
       logger.error("downloadAndResizeImage failed", err);
     }
 
-    const messagesRef = db.collection("conversations").doc(conversationId).collection("messages");
-
-    if (!resized) {
-      await messagesRef.add({
-        role: "assistant",
-        type: "text",
-        text: "Could not process image (download or resize failed).",
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      return;
-    }
-
-    // Step 2: Send resized image to Gemini vision and get food description.
-    let visionResult: { description: string } | null = null;
-    try {
-      visionResult = await sendImageToVision(resized.buffer);
-    } catch (err) {
-      logger.error("Vision step failed", err);
-    }
-
-    if (visionResult) {
-      // Steps 4 & 5: Write assistant message with description (confidence can be added when API supports it).
-      await messagesRef.add({
-        role: "assistant",
-        type: "text",
-        text: visionResult.description,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    } else {
-      await messagesRef.add({
-        role: "assistant",
-        type: "text",
-        text: "Image received and resized, but vision description could not be generated (check GEMINI_API_KEY and logs).",
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      });
+    if (resized) {
+      // resized.buffer is ready for Step 2: send image to vision model.
+      logger.info("Resized image ready for vision", { conversationId, messageId, sizeBytes: resized.buffer.length });
     }
   }
 );
