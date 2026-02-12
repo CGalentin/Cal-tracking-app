@@ -237,13 +237,31 @@
   - If deploy fails with "We failed to modify the IAM policy", run the three `gcloud projects add-iam-policy-binding calorie-app-chat …` commands (as project owner) from the error output, then `npx firebase deploy --only functions` again.
   - Deploy: from project root, `npx firebase deploy --only functions` (use a space: `npx firebase`, not `npxfirebase`).
 
-- **Stopping point:**
+- **Stopping point (earlier):**
   - PR 10 backend: trigger on image upload ✓; resize image ✓; send to vision model (not yet); parse detected foods (not yet). Firestore: no assistant message or confidence until vision is implemented.
+
+### Session: PR 10 Completed — Vision + Calorie Estimate
+
+- **Gemini 404 fix:**
+  - Error: `models/gemini-1.5-flash is not found for API version v1beta`. Model was deprecated/renamed.
+  - Updated `functions/src/index.ts`: `GEMINI_MODEL` changed from `gemini-1.5-flash` to **`gemini-2.5-flash`** (current supported model for generateContent + images). Redeploy: `npx firebase deploy --only functions`.
+
+- **Vision prompt and parsing:**
+  - **Prompt:** Asks Gemini to (1) list foods in a comma-separated list and (2) on the next line write `Estimated total calories: N` for the whole meal.
+  - **Parsing:** `parseVisionResponse(description)` returns `{ foodList, foods, estimatedCalories }`. First line = food list; regex extracts calorie number from "Estimated total calories: N" or "calories: N" (valid range 1–9999).
+
+- **Assistant message and Firestore:**
+  - Message text: `I see: {foods}. Estimated calories for this meal: {N}` when both are present; otherwise food list only or description + calories.
+  - Firestore assistant message fields: `role`, `type: 'text'`, `text`, `foodDescription`, `foodItems`, `confidenceScore`, `estimatedCalories` (when parsed), `timestamp`.
+
+- **Where we left off:**
+  - **PR 10 is complete:** Trigger on image upload ✓, resize ✓, send to Gemini vision ✓, parse foods + calories ✓, create assistant message with description and confidence ✓, save estimatedCalories ✓.
+  - **Next:** PR 11 — LLM description confirmation flow (“Does this match your meal?” + Yes/No).
 
 ### Remaining / Future Tasks
 
 - Follow `to-dos.md` and `PRD.md` to build out:
-  - PR 10: Send image to vision model, parse foods, assistant message with description, confidence score.
+  - ~~PR 10: Send image to vision model, parse foods, assistant message with description, confidence score.~~ **Done.**
   - LLM description confirmation flow (PR 11).
   - Meal logging on confirmation (PR 12).
   - Voice input setup (PR 13).

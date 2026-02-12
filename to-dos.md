@@ -134,41 +134,41 @@
 ## PR 10 — Image Recognition Pipeline
 
 ### Backend
-- [ ] Trigger function on image upload
-- [ ] Resize image
-- [ ] Send image to vision model
-- [ ] Parse detected foods
+- [x] Trigger function on image upload
+- [x] Resize image
+- [x] Send image to vision model
+- [x] Parse detected foods
 
 ### Firestore
-- [ ] Create assistant message with description
-- [ ] Save confidence score
+- [x] Create assistant message with description
+- [x] Save confidence score
 
 ---
 
 ## PR 11 — LLM Description Confirmation Flow
 
 ### Backend
-- [ ] Send vision output to LLM
-- [ ] Generate natural-language description
-- [ ] Ask confirmation question:
+- [x] Send vision output to LLM
+- [x] Generate natural-language description
+- [x] Ask confirmation question:
   - “Does this description match your meal?”
 
 ### Client
-- [ ] Display assistant question
-- [ ] Show Yes / No buttons
+- [x] Display assistant question
+- [x] Show Yes / No buttons
 
 ---
 
 ## PR 12 — Meal Logging on Confirmation
 
 ### Backend
-- [ ] Calculate calories & macros
+- [x] Calculate calories & macros
 - [ ] Create `meals` document
-- [ ] Associate meal with image message
+- [x] Associate meal with image message
 
 ### Client
-- [ ] Show “Meal logged” confirmation
-- [ ] Display calorie & macro summary
+- [x] Show “Meal logged” confirmation
+- [x] Display calorie & macro summary
 
 ---
 
@@ -187,7 +187,7 @@
 
 ### Client
 - [ ] Send transcribed text as message
-- [ ] Show “Processing correction…” state
+- [x] Show “Processing correction…” state
 
 ### Backend
 - [ ] Send correction text + meal context to LLM

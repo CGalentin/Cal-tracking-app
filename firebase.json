@@ -2,5 +2,8 @@
   "functions": {
     "source": "functions",
     "predeploy": "cd functions && npm install && npm run build"
+  },
+  "firestore": {
+    "indexes": "firestore.indexes.json"
   }
 }

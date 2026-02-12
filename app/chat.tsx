@@ -10,13 +10,18 @@ import {
   uploadImageAndSendMessage,
 } from '@/components/chatService';
 
+type Macros = { protein: number; carbs: number; fat: number };
+
 type Message = {
   id: string;
   role: 'user' | 'assistant';
   text: string;
-  type?: 'text' | 'image';
+  type?: 'text' | 'image' | 'confirmation';
   imageUrl?: string;
   timestamp?: unknown;
+  mealLogged?: boolean;
+  estimatedCalories?: number;
+  macros?: Macros;
 };
 
 export default function ChatScreen() {
@@ -81,6 +86,16 @@ export default function ChatScreen() {
     }
   };
 
+  const handleConfirmation = async (response: 'Yes' | 'No') => {
+    if (!conversationId) return;
+    try {
+      await sendMessage(conversationId, 'user', response);
+    } catch (error) {
+      console.error('Error sending confirmation:', error);
+      Alert.alert('Error', 'Failed to send response.');
+    }
+  };
+
   const requestMediaPermission = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -121,31 +136,53 @@ export default function ChatScreen() {
     }
   };
 
-  const renderMessage = ({ item: message }: { item: Message }) => (
-    <View className={`mb-4 px-4 ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
-      <View
-        className={`max-w-[80%] px-4 py-3 rounded-2xl overflow-hidden ${
-          message.role === 'user'
-            ? 'bg-blue-500 rounded-br-sm'
-            : 'bg-gray-200 rounded-bl-sm'
-        }`}>
-        {message.type === 'image' && message.imageUrl ? (
-          <Image
-            source={{ uri: message.imageUrl }}
-            style={{ width: 200, height: 200, borderRadius: 8 }}
-            contentFit="cover"
-          />
-        ) : (
-          <Text
-            className={`text-base ${
-              message.role === 'user' ? 'text-white' : 'text-gray-900'
-            }`}>
-            {message.text}
-          </Text>
+  const renderMessage = ({ item: message, index }: { item: Message; index: number }) => {
+    const nextMessage = messages[index + 1];
+    const showConfirmationButtons =
+      message.type === 'confirmation' &&
+      message.role === 'assistant' &&
+      (nextMessage == null || nextMessage.role !== 'user');
+
+    return (
+      <View className={`mb-4 px-4 ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
+        <View
+          className={`max-w-[80%] px-4 py-3 rounded-2xl overflow-hidden ${
+            message.role === 'user'
+              ? 'bg-blue-500 rounded-br-sm'
+              : 'bg-gray-200 rounded-bl-sm'
+          }`}>
+          {message.type === 'image' && message.imageUrl ? (
+            <Image
+              source={{ uri: message.imageUrl }}
+              style={{ width: 200, height: 200, borderRadius: 8 }}
+              contentFit="cover"
+            />
+          ) : (
+            <Text
+              className={`text-base ${
+                message.role === 'user' ? 'text-white' : 'text-gray-900'
+              }`}>
+              {message.text}
+            </Text>
+          )}
+        </View>
+        {showConfirmationButtons && (
+          <View className="flex-row gap-2 mt-2">
+            <TouchableOpacity
+              onPress={() => handleConfirmation('Yes')}
+              className="px-4 py-2 rounded-lg bg-green-500">
+              <Text className="text-white font-medium">Yes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleConfirmation('No')}
+              className="px-4 py-2 rounded-lg bg-gray-400">
+              <Text className="text-white font-medium">No</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return (
