@@ -258,16 +258,146 @@
   - **PR 10 is complete:** Trigger on image upload ✓, resize ✓, send to Gemini vision ✓, parse foods + calories ✓, create assistant message with description and confidence ✓, save estimatedCalories ✓.
   - **Next:** PR 11 — LLM description confirmation flow (“Does this match your meal?” + Yes/No).
 
+### Session: PR 11 & PR 12 — Confirmation Flow, Meal Logging, Meals Tab
+
+- **PR 11 — Option B (two messages + Yes/No):** Backend adds a second assistant message with `type: 'confirmation'`, "Does this description match your meal?", plus `linkedVisionMessageId`, `linkedImageMessageId`, `foodItems`, `estimatedCalories`. Client shows Yes/No buttons for confirmation messages; they hide after the user replies. PR 11 checked off in to-dos.md.
+- **PR 12 — Meal logging on "Yes":** New trigger `onMessageCreated` creates a `meals` document and an assistant "Meal logged. X calories (P …g · C …g · F …g)" message. Macros from `estimateMacrosFromCalories`. Duplicate green card removed; only bubble text shown. PR 12 checked off.
+- **Meals tab:** New tab and screen `app/(tabs)/meals.tsx`; `subscribeToMeals(callback, onError)` in chatService.js (query by userId only, sort by createdAt in memory; error callback so tab does not load forever). Meals collection is top-level `meals` in Firestore.
+- **Deploy:** PowerShell: `npx firebase deploy --only "functions,firestore:indexes"` (quoted). "Operation already in progress" → wait 2–3 min and retry. Messages index removed (not necessary); meals query avoids composite index.
+
+### Session: PR 13 — Voice Input & UI Updates
+
+- **Expo Go (no paid Apple Developer):** Staying on Expo Go for development. Use `npx expo start` (or `npx expo start --clear`). Scan QR code with Expo Go on phone. For EAS: use `npx eas` (not `eas`) if CLI not in PATH.
+
+- **PR 13 — Voice input completed:**
+  - Microphone button in chat (next to camera); expo-av for recording; Cloud Function `transcribeAudio` (M4A→FLAC via ffmpeg, Google Speech-to-Text).
+  - Storage rules for `audio/` path; deploy: `npx firebase deploy --only storage` from **project root**.
+  - `onTextMealMessageCreated` Cloud Function: when user sends a meal description (text or voice transcript), Gemini parses it and adds confirmation flow (same as image upload).
+
+- **Chat UI — StyleSheet instead of Tailwind:**
+  - NativeWind/Tailwind classes were not applying (elements stacked vertically instead of horizontal row). Replaced input bar with React Native **StyleSheet** so layout works reliably: `flexDirection: 'row'`, `gap: 16`, camera | mic | text input | Send in one row.
+
+- **Light blue color theme:**
+  - Added `AppColors` in `constants/theme.ts` (`#E6F4FE` background, matching Android icon).
+  - Updated: Login, Home, Chat, Meals, tab bar, Chat header, splash screen.
+  - `app.json`: `userInterfaceStyle: "light"` (avoids black on iPhone in dark mode).
+
+### Commands to Get Started (Returning to Project)
+
+From the **project root** (`Cal-tracking-app`):
+
+```bash
+# 1. Install app dependencies (if needed)
+npm install
+
+# 2. Start Expo dev server
+npx expo start
+# Or with cache clear if things look stale:
+npx expo start --clear
+```
+
+Then press `r` in the terminal to reload, or scan the QR code with Expo Go.
+
+**If you changed Cloud Functions:**
+
+```bash
+cd functions
+npm install
+npm run build
+cd ..
+npx firebase deploy --only functions
+```
+
+**If you changed Storage rules:**
+
+```bash
+npx firebase deploy --only storage
+```
+
+**If you changed Firestore rules:**
+
+```bash
+npx firebase deploy --only firestore
+```
+
+### Session: Firestore Permissions, Chat UI & Mobile Layout (Today)
+
+- **Firestore "Missing or insufficient permissions" fix:**
+  - Chat failed to load with `FirebaseError: Missing or insufficient permissions`.
+  - Created `firestore.rules` with rules for `conversations`, `messages`, and `meals`.
+  - Updated `firebase.json` to include `"rules": "firestore.rules"`.
+  - Deploy: `npx firebase deploy --only firestore`.
+
+- **Yes/No confirmation buttons:**
+  - Styled as distinct buttons with spacing (`gap: 16`), larger padding, `minWidth: 80`.
+  - No button color: `#ebe46a` (user-selected yellow).
+  - Added `activeOpacity` for press feedback.
+
+- **Navigation — Chat in tabs:**
+  - Moved Chat from root Stack into `(tabs)` so the tab bar (Home | Chat | Meals) stays visible below chat.
+  - Created `app/(tabs)/chat.tsx`, removed `app/chat.tsx`.
+  - Added Chat tab with chat icon; hid Explore tab.
+  - "Open Chat" now switches to Chat tab via `router.replace('/(tabs)/chat')`.
+
+- **Centered layout (desktop & mobile):**
+  - Messages, images, and photo preview centered.
+  - Switched to StyleSheet (no NativeWind) for consistent centering.
+  - `useWindowDimensions()` for responsive widths; `messageRow` with explicit `width: screenWidth` and `alignItems: 'center'`.
+  - Image wrapper with centering; photo preview section centered.
+
+- **Yes/No button horizontal fix:**
+  - Message bubble `minWidth: 72` and `numberOfLines={1}` to prevent "Yes"/"No" text wrapping vertically.
+  - Confirmation buttons use fixed width, `flexShrink: 0`.
+
+- **Mobile UI improvements:**
+  - **User vs assistant:** Labels "You" and "Assistant" above bubbles; user = blue (`#007AFF`), assistant = white with gray border.
+  - **Spacing:** Increased `marginBottom` to 24, more padding, `lineHeight: 24`.
+  - **Yes/No buttons:** Larger touch targets (`minHeight: 48`), shadows/elevation, `hitSlop`, `flexShrink: 0`.
+  - **Image centering:** `imageWrapper` with `alignItems: 'center'`.
+  - **Fallback for confirmation:** Buttons show when text includes "Does this description match your meal?" even if `type` is missing.
+
+- **Key files changed:**
+  - `firestore.rules`, `firebase.json`, `app/(tabs)/chat.tsx`, `app/(tabs)/_layout.tsx`, `app/_layout.tsx`, `app/(tabs)/index.tsx`, `components/ui/icon-symbol.tsx`.
+
+### Session: PR 14 — Voice-Based Corrections Flow
+
+- **Backend (functions/src/index.ts):**
+  - Added `GEMINI_CORRECTION_PROMPT` and `sendCorrectionToGemini()` to send correction text + original meal context (foodItems, estimatedCalories) to LLM.
+  - Updated `onTextMealMessageCreated`: returns early for "No"; detects correction context when previous message is user "No" and message before that is confirmation.
+  - Correction flow: queries recent messages, gets original meal data, calls `sendCorrectionToGemini`, parses updated meal with `parseVisionResponse`, recalculates calories/macros, adds updated description + new confirmation message.
+- **Client (app/(tabs)/chat.tsx):**
+  - Added `processingCorrection` state. Set when user sends a message and last message was "No"; cleared when assistant replies.
+  - Placeholder shows "Processing correction…" during correction processing; input/buttons disabled.
+- **Transcribed text as message:** Already implemented (voice transcript sent via `sendMessage` in handleStopRecording).
+
+### Session: PR 15 — Update Meal After Corrections (Backend)
+
+- **Update meal document:** Meal now includes `confirmationMessageId` to link to the confirmation message.
+- **Store original + updated values:** When meal was created after a correction flow, we query message history to find the original confirmation (before user said No) and store `originalFoodItems` and `originalEstimatedCalories` on the meal document.
+- **Prevent duplicate logs:** Before creating a meal, we query for an existing meal with the same `userId` and `confirmationMessageId`. If found, we skip and return (idempotent for double-tap or retries).
+- Added composite Firestore index on `meals` (userId, confirmationMessageId) for the duplicate check.
+
+### Session: PR 15 — Update Meal After Corrections (Client)
+
+- **Update displayed nutrition values:** Chat now renders meal-logged messages with a styled card showing "Meal logged", calories, and macros (P, C, F) in a clear layout. Meals tab shows nutrition (cal, P, C, F) with improved typography and spacing.
+- **Show confirmation message:** Meal-logged messages in chat display a green success card with structured nutrition instead of plain text.
+
+### Session: PR 16 — Manual Text Corrections (Fallback)
+
+- **Allow typed corrections:** User can type corrections in the text input after saying No; same backend path as voice. Placeholder shows "Type or speak your correction..." when waiting for a correction.
+- **Reuse voice correction logic:** Typed and voice corrections both use sendMessage → onTextMealMessageCreated; no separate flow needed.
+- **Display updated macros inline:** Backend adds macros and isCorrectionUpdate to correction response. Client renders "Updated" messages as a structured card with food items and nutrition (cal, P, C, F) inline.
+
 ### Remaining / Future Tasks
 
 - Follow `to-dos.md` and `PRD.md` to build out:
   - ~~PR 10: Send image to vision model, parse foods, assistant message with description, confidence score.~~ **Done.**
-  - LLM description confirmation flow (PR 11).
-  - Meal logging on confirmation (PR 12).
-  - Voice input setup (PR 13).
-  - Voice-based corrections flow (PR 14).
-  - Update meal after corrections (PR 15).
-  - Manual text corrections (PR 16).
+  - ~~LLM description confirmation flow (PR 11).~~ **Done.**
+  - ~~Meal logging on confirmation (PR 12).~~ **Done.**
+  - ~~Voice input setup (PR 13).~~ **Done.**
+  - ~~Voice-based corrections flow (PR 14).~~ **Done.**
+  - ~~Update meal after corrections (PR 15).~~ **Done.**
+  - ~~Manual text corrections (PR 16).~~ **Done.**
   - Meal history & daily summary (PR 17).
   - Error handling (PR 18).
   - Onboarding & help (PR 19).

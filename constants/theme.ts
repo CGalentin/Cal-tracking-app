@@ -8,6 +8,17 @@ import { Platform } from 'react-native';
 const tintColorLight = '#0a7ea4';
 const tintColorDark = '#fff';
 
+/** Light blue theme to match app icon — used across Login, Home, Chat, Meals */
+export const AppColors = {
+  background: '#E6F4FE',
+  backgroundAlt: '#d4edfc',
+  card: '#ffffff',
+  cardBorder: '#b8dff8',
+  text: '#1a1a1a',
+  textSecondary: '#4a5568',
+  primary: '#007AFF',
+};
+
 export const Colors = {
   light: {
     text: '#11181C',

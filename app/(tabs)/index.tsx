@@ -1,11 +1,12 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AppColors } from '@/constants/theme';
 
 export default function HomeScreen() {
   const router = useRouter();
 
   const handleOpenChat = () => {
-    router.push('/chat');
+    router.replace('/(tabs)/chat');
   };
 
   return (
@@ -26,7 +27,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: AppColors.background,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -34,7 +35,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: '#ffffff',
+    backgroundColor: AppColors.card,
     borderRadius: 8,
     padding: 24,
     alignItems: 'center',
@@ -49,7 +50,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#1a1a1a',
+    color: AppColors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
@@ -62,7 +63,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     width: '100%',
-    backgroundColor: '#007AFF',
+    backgroundColor: AppColors.primary,
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 8,

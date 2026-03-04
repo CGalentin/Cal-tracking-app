@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import 'react-native-reanimated';
 
+import { AppColors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { subscribeToAuthChanges } from '../components/authService';
 
@@ -46,8 +47,15 @@ export default function RootLayout() {
   if (loading) {
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <Text>Loading...</Text>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 20,
+            backgroundColor: AppColors.background,
+          }}>
+          <Text style={{ color: AppColors.text }}>Loading...</Text>
           <StatusBar style="auto" />
         </View>
       </ThemeProvider>
@@ -59,7 +67,6 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="chat" options={{ title: 'Chat', headerShown: true }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />

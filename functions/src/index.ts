@@ -1,4 +1,10 @@
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import speech from "@google-cloud/speech";
 import * as admin from "firebase-admin";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegStatic from "ffmpeg-static";
 import * as functions from "firebase-functions";
 import * as logger from "firebase-functions/logger";
 import { defineSecret } from "firebase-functions/params";
@@ -7,6 +13,10 @@ import sharp from "sharp";
 
 if (!admin.apps.length) {
   admin.initializeApp();
+}
+
+if (ffmpegStatic) {
+  ffmpeg.setFfmpegPath(ffmpegStatic as string);
 }
 
 const db = admin.firestore();
@@ -21,6 +31,18 @@ const GEMINI_VISION_PROMPT = `Look at this image of a meal or food.
 1. List the foods you see in a short comma-separated list. Only list food items, nothing else. Example: chicken, rice, broccoli.
 2. On the next line, estimate the total calories for the whole meal and write exactly: Estimated total calories: N
 where N is a single number (e.g. 450 or 650). Base the estimate on typical portion sizes for the foods shown.`;
+
+const GEMINI_TEXT_MEAL_PROMPT = `The user described a meal they ate. Parse it into:
+1. A comma-separated list of foods. Only list food items, nothing else. Example: chicken salad, apple
+2. On the next line, estimate the total calories for the whole meal and write exactly: Estimated total calories: N
+where N is a single number (e.g. 350 or 550). Base the estimate on typical portion sizes.`;
+
+const GEMINI_CORRECTION_PROMPT = `The user saw this meal description: {foods}. Estimated calories: {calories}.
+They said it didn't match and gave this correction: {correction}
+Apply the correction and output:
+1. An updated comma-separated list of foods. Only list food items, nothing else.
+2. On the next line, estimate the total calories for the corrected meal and write exactly: Estimated total calories: N
+where N is a single number.`;
 
 /**
  * Send image to Gemini vision API and get text description of foods.
@@ -76,6 +98,87 @@ async function sendImageToVisionModel(imageBuffer: Buffer, apiKey: string): Prom
     });
     return null;
   }
+
+  return { text };
+}
+
+/**
+ * Send text meal description to Gemini and get parsed foods + calories.
+ */
+async function sendTextToGemini(userText: string, apiKey: string): Promise<{ text: string } | null> {
+  if (!apiKey) {
+    logger.warn("sendTextToGemini: apiKey is empty");
+    return null;
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+  const body = {
+    contents: [{ parts: [{ text: `${GEMINI_TEXT_MEAL_PROMPT}\n\nUser's meal: ${userText}` }] }],
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    logger.warn("sendTextToGemini: Gemini API failed", { status: response.status, body: errText });
+    return null;
+  }
+
+  const data = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
+    promptFeedback?: { blockReason?: string };
+  };
+  const candidate = data.candidates?.[0];
+  const text = candidate?.content?.parts?.[0]?.text?.trim();
+  if (!text) return null;
+
+  return { text };
+}
+
+/**
+ * PR 14 — Send correction text + original meal context to LLM; get updated meal description.
+ */
+async function sendCorrectionToGemini(
+  correctionText: string,
+  originalFoodItems: string[],
+  originalCalories: number,
+  apiKey: string
+): Promise<{ text: string } | null> {
+  if (!apiKey) {
+    logger.warn("sendCorrectionToGemini: apiKey is empty");
+    return null;
+  }
+
+  const foods = originalFoodItems.length > 0 ? originalFoodItems.join(", ") : "unknown";
+  const prompt = GEMINI_CORRECTION_PROMPT.replace("{foods}", foods)
+    .replace("{calories}", String(originalCalories))
+    .replace("{correction}", correctionText);
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  const body = { contents: [{ parts: [{ text: prompt }] }] };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    logger.warn("sendCorrectionToGemini: Gemini API failed", { status: response.status, body: errText });
+    return null;
+  }
+
+  const data = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+  if (!text) return null;
 
   return { text };
 }
@@ -144,6 +247,75 @@ async function downloadAndResizeImage(imageUrl: string): Promise<{ buffer: Buffe
 export const testFunction = functions.https.onRequest((req: unknown, res: { send: (body: string) => void }) => {
   functions.logger.info("Cal-tracking-app: testFunction invoked — Cloud Functions are working.");
   res.send("Hello from Firebase! Cloud Functions are set up.");
+});
+
+/**
+ * PR 13 — Voice input (Expo Go): transcribe audio from URL using Google Cloud Speech-to-Text.
+ * Expects POST body: { audioUrl: string }
+ * Returns: { transcript: string }
+ */
+export const transcribeAudio = functions.https.onRequest(async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  if (req.method === "OPTIONS") {
+    res.set("Access-Control-Allow-Methods", "POST");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.status(204).send("");
+    return;
+  }
+  if (req.method !== "POST") {
+    res.status(405).send("Method not allowed");
+    return;
+  }
+  const audioUrl = (req.body as { audioUrl?: string })?.audioUrl;
+  if (!audioUrl || typeof audioUrl !== "string") {
+    res.status(400).send("Missing audioUrl in request body");
+    return;
+  }
+  try {
+    const audioResponse = await fetch(audioUrl);
+    if (!audioResponse.ok) throw new Error("Failed to fetch audio");
+    const arrayBuffer = await audioResponse.arrayBuffer();
+    const audioBuffer = Buffer.from(arrayBuffer);
+    const tmpDir = os.tmpdir();
+    const inputPath = path.join(tmpDir, `input-${Date.now()}.m4a`);
+    const outputPath = path.join(tmpDir, `output-${Date.now()}.flac`);
+    fs.writeFileSync(inputPath, audioBuffer);
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(inputPath)
+        .toFormat("flac")
+        .audioChannels(1)
+        .audioFrequency(16000)
+        .on("end", () => resolve())
+        .on("error", (err: unknown) => reject(err))
+        .save(outputPath);
+    });
+    const flacBuffer = fs.readFileSync(outputPath);
+    try {
+      fs.unlinkSync(inputPath);
+      fs.unlinkSync(outputPath);
+    } catch {
+      /* ignore cleanup errors */
+    }
+    const client = new speech.SpeechClient();
+    const [response] = await client.recognize({
+      audio: { content: flacBuffer.toString("base64") },
+      config: {
+        encoding: "FLAC",
+        sampleRateHertz: 16000,
+        languageCode: "en-US",
+      },
+    });
+    const transcript =
+      response.results
+        ?.map((r) => r.alternatives?.[0]?.transcript)
+        .filter(Boolean)
+        .join(" ") ?? "";
+    res.json({ transcript });
+  } catch (err) {
+    logger.error("transcribeAudio failed", err);
+    const msg = err instanceof Error ? err.message : "Transcription failed";
+    res.status(500).send(msg);
+  }
 });
 
 /**
@@ -218,12 +390,12 @@ export const onImageMessageCreated = onDocumentCreated(
     if (foodItems.length > 0) {
       messageParts.push(`I see: ${foodItems.join(", ")}.`);
       if (estimatedCalories != null) {
-        messageParts.push(`Estimated calories for this meal: ${estimatedCalories}`);
+        messageParts.push(`Estimated: ${formatNutritionSummary(estimatedCalories)}`);
       }
     } else {
       messageParts.push(description);
       if (estimatedCalories != null) {
-        messageParts.push(`Estimated calories for this meal: ${estimatedCalories}`);
+        messageParts.push(`Estimated: ${formatNutritionSummary(estimatedCalories)}`);
       }
     }
 
@@ -260,6 +432,197 @@ export const onImageMessageCreated = onDocumentCreated(
 );
 
 /**
+ * PR 13 — Text/voice meal input: when user sends a meal description (not "Yes"), parse with Gemini and ask for confirmation.
+ * PR 14 — When user said "No" and then sends a correction, use correction flow: send to LLM with context, parse updated meal, recalculate.
+ */
+export const onTextMealMessageCreated = onDocumentCreated(
+  {
+    document: "conversations/{conversationId}/messages/{messageId}",
+    secrets: [geminiApiKeySecret],
+  },
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot?.exists) return;
+
+    const data = snapshot.data();
+    const role = data?.role as string | undefined;
+    const type = data?.type as string | undefined;
+    const text = (data?.text as string | undefined)?.trim();
+
+    if (role !== "user" || type !== "text" || !text || text === "Yes") return;
+    if (text === "No") return; // "No" is handled by confirmation flow; no AI processing needed
+
+    const { conversationId } = event.params;
+    const messagesRef = db.collection("conversations").doc(conversationId).collection("messages");
+    const newMsgTimestamp = data.timestamp;
+    if (!newMsgTimestamp) {
+      logger.warn("onTextMealMessageCreated: message has no timestamp");
+      return;
+    }
+
+    // PR 14 — Detect correction context: previous message was user "No", message before that was confirmation
+    const prevQuery = messagesRef
+      .where("timestamp", "<", newMsgTimestamp)
+      .orderBy("timestamp", "desc")
+      .limit(5);
+    const prevSnapshot = await prevQuery.get();
+    const prevDocs = prevSnapshot.docs;
+    if (prevDocs.length >= 2) {
+      const immediatelyPrev = prevDocs[0].data();
+      const twoBack = prevDocs[1].data();
+      const immediatelyPrevRole = immediatelyPrev?.role as string | undefined;
+      const immediatelyPrevText = (immediatelyPrev?.text as string | undefined)?.trim();
+      const twoBackType = twoBack?.type as string | undefined;
+
+      if (
+        immediatelyPrevRole === "user" &&
+        immediatelyPrevText === "No" &&
+        twoBackType === "confirmation"
+      ) {
+        // Correction flow: user rejected confirmation and is now correcting
+        const foodItems = (twoBack?.foodItems as string[]) ?? [];
+        const estimatedCalories = (twoBack?.estimatedCalories as number | undefined) ?? 0;
+        const linkedImageMessageId = twoBack?.linkedImageMessageId as string | undefined;
+
+        logger.info("Correction flow detected", {
+          conversationId,
+          correction: text.slice(0, 80),
+          originalFoods: foodItems,
+        });
+
+        const apiKey = geminiApiKeySecret.value();
+        let result: { text: string } | null = null;
+        try {
+          result = await sendCorrectionToGemini(text, foodItems, estimatedCalories, apiKey);
+        } catch (err) {
+          logger.error("sendCorrectionToGemini failed", err);
+        }
+
+        if (!result) {
+          await messagesRef.add({
+            role: "assistant",
+            type: "text",
+            text: "I couldn't apply that correction. Please try again or describe the full meal.",
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return;
+        }
+
+        const { foods: updatedFoodItems, estimatedCalories: updatedCalories } =
+          parseVisionResponse(result.text);
+        const updatedMacros =
+          updatedCalories != null && updatedCalories > 0
+            ? estimateMacrosFromCalories(updatedCalories)
+            : null;
+
+        const messageParts: string[] = [];
+        if (updatedFoodItems.length > 0) {
+          messageParts.push(`Updated: ${updatedFoodItems.join(", ")}.`);
+          if (updatedCalories != null) {
+            messageParts.push(`Estimated: ${formatNutritionSummary(updatedCalories)}`);
+          }
+        } else {
+          messageParts.push(result.text);
+          if (updatedCalories != null) {
+            messageParts.push(`Estimated: ${formatNutritionSummary(updatedCalories)}`);
+          }
+        }
+
+        const visionMsgRef = await messagesRef.add({
+          role: "assistant",
+          type: "text",
+          text: messageParts.join(" "),
+          foodDescription: result.text,
+          foodItems: updatedFoodItems,
+          confidenceScore: 0.85,
+          isCorrectionUpdate: true,
+          ...(updatedCalories != null && { estimatedCalories: updatedCalories }),
+          ...(updatedMacros != null && { macros: updatedMacros }),
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        await messagesRef.add({
+          role: "assistant",
+          type: "confirmation",
+          text: "Does this description match your meal?",
+          linkedVisionMessageId: visionMsgRef.id,
+          linkedImageMessageId: linkedImageMessageId ?? null,
+          foodItems: updatedFoodItems,
+          ...(updatedCalories != null && { estimatedCalories: updatedCalories }),
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        logger.info("Correction processed", {
+          conversationId,
+          updatedFoods: updatedFoodItems,
+          updatedCalories: updatedCalories ?? undefined,
+        });
+        return;
+      }
+    }
+
+    // New meal flow (PR 13)
+    logger.info("Text meal message created", { conversationId, text: text.slice(0, 80) });
+
+    const apiKey = geminiApiKeySecret.value();
+    let result: { text: string } | null = null;
+    try {
+      result = await sendTextToGemini(text, apiKey);
+    } catch (err) {
+      logger.error("sendTextToGemini failed", err);
+    }
+
+    if (!result) {
+      await messagesRef.add({
+        role: "assistant",
+        type: "text",
+        text: "I couldn't parse that meal. Please try describing it again or add a photo.",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+
+    const { foods: foodItems, estimatedCalories } = parseVisionResponse(result.text);
+    const confidenceScore = 0.85;
+
+    const messageParts: string[] = [];
+    if (foodItems.length > 0) {
+      messageParts.push(`I see: ${foodItems.join(", ")}.`);
+      if (estimatedCalories != null) {
+        messageParts.push(`Estimated: ${formatNutritionSummary(estimatedCalories)}`);
+      }
+    } else {
+      messageParts.push(result.text);
+      if (estimatedCalories != null) {
+        messageParts.push(`Estimated: ${formatNutritionSummary(estimatedCalories)}`);
+      }
+    }
+
+    const visionMsgRef = await messagesRef.add({
+      role: "assistant",
+      type: "text",
+      text: messageParts.join(" "),
+      foodDescription: result.text,
+      foodItems,
+      confidenceScore,
+      ...(estimatedCalories != null && { estimatedCalories }),
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    await messagesRef.add({
+      role: "assistant",
+      type: "confirmation",
+      text: "Does this description match your meal?",
+      linkedVisionMessageId: visionMsgRef.id,
+      linkedImageMessageId: null,
+      foodItems,
+      ...(estimatedCalories != null && { estimatedCalories }),
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+);
+
+/**
  * Simple macro estimate from calories (placeholder: ~30% protein, 40% carbs, 30% fat by energy).
  */
 function estimateMacrosFromCalories(cal: number): { protein: number; carbs: number; fat: number } {
@@ -269,8 +632,15 @@ function estimateMacrosFromCalories(cal: number): { protein: number; carbs: numb
   return { protein, carbs, fat };
 }
 
+/** Format calories and macros for display (e.g. "450 cal (P 34g · C 45g · F 15g)"). */
+function formatNutritionSummary(calories: number): string {
+  const macros = estimateMacrosFromCalories(calories);
+  return `${calories} cal (P ${macros.protein}g · C ${macros.carbs}g · F ${macros.fat}g)`;
+}
+
 /**
  * PR 12 — Meal Logging on Confirmation: when user sends "Yes", create meal doc and reply with summary.
+ * PR 14 — When user sends "No", ask for clarification so they can type or speak their correction.
  */
 export const onMessageCreated = onDocumentCreated(
   { document: "conversations/{conversationId}/messages/{messageId}" },
@@ -281,13 +651,14 @@ export const onMessageCreated = onDocumentCreated(
     const data = snapshot.data();
     const role = data?.role as string | undefined;
     const text = (data?.text as string | undefined)?.trim();
-    if (role !== "user" || text !== "Yes") return;
+    if (role !== "user" || !text) return;
+    if (text !== "Yes" && text !== "No") return;
 
     const { conversationId } = event.params;
     const messagesRef = db.collection("conversations").doc(conversationId).collection("messages");
     const newMsgTimestamp = data.timestamp;
     if (!newMsgTimestamp) {
-      logger.warn("onMessageCreated: Yes message has no timestamp");
+      logger.warn("onMessageCreated: message has no timestamp");
       return;
     }
 
@@ -305,24 +676,86 @@ export const onMessageCreated = onDocumentCreated(
     const prevData = prevDoc.data();
     if ((prevData?.type as string) !== "confirmation") return;
 
+    if (text === "No") {
+      // PR 14: Ask for clarification so user can type or speak their correction
+      await messagesRef.add({
+        role: "assistant",
+        type: "text",
+        text: "What would you like to correct? Type or speak your changes (e.g. \"that's turkey, not chicken\" or \"add two tablespoons of hummus\").",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      logger.info("Asked for correction", { conversationId });
+      return;
+    }
+
+    // text === "Yes" — log meal (PR 15: prevent duplicates, store original if correction)
+    const confirmationMessageId = prevDoc.id;
     const foodItems = (prevData?.foodItems as string[]) ?? [];
     const estimatedCalories = prevData?.estimatedCalories as number | undefined;
     const linkedImageMessageId = prevData?.linkedImageMessageId as string | undefined;
     const linkedVisionMessageId = prevData?.linkedVisionMessageId as string | undefined;
 
+    // PR 15: Prevent duplicate logs — skip if meal already created for this confirmation
+    const existingMealSnap = await db
+      .collection("meals")
+      .where("userId", "==", conversationId)
+      .where("confirmationMessageId", "==", confirmationMessageId)
+      .limit(1)
+      .get();
+    if (!existingMealSnap.empty) {
+      logger.info("Meal already logged for this confirmation, skipping duplicate", {
+        conversationId,
+        confirmationMessageId,
+      });
+      return;
+    }
+
+    // PR 15: Store original values if this was a correction flow
+    let originalFoodItems: string[] | undefined;
+    let originalEstimatedCalories: number | undefined;
+    const prevTimestamp = prevData?.timestamp;
+    if (prevTimestamp) {
+      const historyQuery = messagesRef
+        .where("timestamp", "<", prevTimestamp)
+        .orderBy("timestamp", "desc")
+        .limit(15);
+      const historySnap = await historyQuery.get();
+      let foundNo = false;
+      for (const doc of historySnap.docs) {
+        const d = doc.data();
+        if (foundNo && (d?.type as string) === "confirmation") {
+          originalFoodItems = (d?.foodItems as string[]) ?? [];
+          originalEstimatedCalories = d?.estimatedCalories as number | undefined;
+          break;
+        }
+        if ((d?.role as string) === "user" && (d?.text as string)?.trim() === "No") {
+          foundNo = true;
+        }
+      }
+    }
+
     const calories = estimatedCalories ?? 0;
     const macros = calories > 0 ? estimateMacrosFromCalories(calories) : null;
 
-    const mealRef = await db.collection("meals").add({
+    const mealData: Record<string, unknown> = {
       userId: conversationId,
       conversationId,
+      confirmationMessageId,
       imageMessageId: linkedImageMessageId ?? null,
       visionMessageId: linkedVisionMessageId ?? null,
       foodItems,
       estimatedCalories: calories,
       macros,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+    if (originalFoodItems != null) {
+      mealData.originalFoodItems = originalFoodItems;
+    }
+    if (originalEstimatedCalories != null) {
+      mealData.originalEstimatedCalories = originalEstimatedCalories;
+    }
+
+    const mealRef = await db.collection("meals").add(mealData);
 
     const summaryParts: string[] = ["Meal logged."];
     if (calories > 0) summaryParts.push(`${calories} calories`);

@@ -3,6 +3,7 @@ import React from 'react';
 import { Pressable, Text } from 'react-native';
 
 import { logOut } from '@/components/authService';
+import { AppColors } from '@/constants/theme';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -17,9 +18,11 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#007AFF',
+        tabBarActiveTintColor: AppColors.primary,
+        tabBarInactiveTintColor: AppColors.textSecondary,
+        tabBarStyle: { backgroundColor: AppColors.card, borderTopColor: AppColors.cardBorder },
         headerShown: true,
-        headerStyle: { backgroundColor: '#007AFF' },
+        headerStyle: { backgroundColor: AppColors.primary },
         headerTintColor: '#ffffff',
         headerTitleStyle: { fontWeight: '600', fontSize: 18 },
         headerRight: () => (
@@ -37,6 +40,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="message.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="meals"
         options={{
           title: 'Meals',
@@ -46,8 +56,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          href: null,
         }}
       />
     </Tabs>

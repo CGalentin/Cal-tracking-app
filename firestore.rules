@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can only read/write their own conversation (conversationId = user.uid)
+    match /conversations/{conversationId} {
+      allow read, write: if request.auth != null && request.auth.uid == conversationId;
+      // Users can only read/write messages in their own conversation
+      match /messages/{messageId} {
+        allow read, write: if request.auth != null && request.auth.uid == conversationId;
+      }
+    }
+    // Users can read their own meals (Cloud Functions write them)
+    match /meals/{mealId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow write: if false;  // Only Cloud Functions write meals
+    }
+  }
+}

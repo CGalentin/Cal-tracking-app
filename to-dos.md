@@ -163,7 +163,7 @@
 
 ### Backend
 - [x] Calculate calories & macros
-- [ ] Create `meals` document
+- [x] Create `meals` document
 - [x] Associate meal with image message
 
 ### Client
@@ -175,46 +175,51 @@
 ## PR 13 — Voice Input Setup (User Corrections)
 
 ### Client
-- [ ] Install speech-to-text library
-- [ ] Request microphone permissions
-- [ ] Add microphone button to chat
-- [ ] Record voice input
-- [ ] Convert speech to text
+- [x] Install speech-to-text library (expo-av for recording + Cloud Function for Speech-to-Text)
+- [x] Request microphone permissions (app.json expo-av plugin, Android RECORD_AUDIO)
+- [x] Add microphone button to chat
+- [x] Record voice input
+- [x] Convert speech to text
+
+### Backend (added for PR 13)
+- [x] `transcribeAudio` Cloud Function (fetch audio, convert M4A→FLAC, Google Speech-to-Text)
+- [x] Storage rules for `audio/` path
+- [x] `onTextMealMessageCreated` — parse voice/text meal descriptions with Gemini, confirmation flow
 
 ---
 
 ## PR 14 — Voice-Based Corrections Flow
 
 ### Client
-- [ ] Send transcribed text as message
+- [x] Send transcribed text as message
 - [x] Show “Processing correction…” state
 
 ### Backend
-- [ ] Send correction text + meal context to LLM
-- [ ] Parse updated meal description
-- [ ] Recalculate calories & macros
+- [x] Send correction text + meal context to LLM
+- [x] Parse updated meal description
+- [x] Recalculate calories & macros
 
 ---
 
 ## PR 15 — Update Meal After Voice/Text Corrections
 
 ### Backend
-- [ ] Update meal document
-- [ ] Store original + updated values
-- [ ] Prevent duplicate logs
+- [x] Update meal document
+- [x] Store original + updated values
+- [x] Prevent duplicate logs
 
 ### Client
-- [ ] Update displayed nutrition values
-- [ ] Show confirmation message
+- [x] Update displayed nutrition values
+- [x] Show confirmation message
 
 ---
 
 ## PR 16 — Manual Text Corrections (Fallback)
 
 ### Client
-- [ ] Allow typed corrections
-- [ ] Reuse voice correction logic
-- [ ] Display updated macros inline
+- [x] Allow typed corrections
+- [x] Reuse voice correction logic
+- [x] Display updated macros inline
 
 ---
 

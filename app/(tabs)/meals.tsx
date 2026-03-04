@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { subscribeToMeals } from '@/components/chatService';
+import { AppColors } from '@/constants/theme';
 
 type Meal = {
   id: string;
@@ -52,26 +53,26 @@ export default function MealsScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 justify-center items-center bg-white">
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text className="text-gray-500 mt-2">Loading meals…</Text>
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={AppColors.primary} />
+        <Text style={styles.loadingText}>Loading meals…</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View className="flex-1 justify-center items-center bg-white px-6">
-        <Text className="text-red-600 text-center font-medium mb-2">Couldn&apos;t load meals</Text>
-        <Text className="text-gray-600 text-center text-sm">{error}</Text>
+      <View style={[styles.centerContainer, styles.padded]}>
+        <Text style={styles.errorTitle}>Couldn&apos;t load meals</Text>
+        <Text style={styles.errorText}>{error}</Text>
       </View>
     );
   }
 
   if (meals.length === 0) {
     return (
-      <View className="flex-1 justify-center items-center bg-white px-6">
-        <Text className="text-gray-600 text-center text-lg">
+      <View style={[styles.centerContainer, styles.padded]}>
+        <Text style={styles.emptyText}>
           No meals logged yet. Log a meal by sending a photo in Chat and confirming with Yes.
         </Text>
       </View>
@@ -79,30 +80,71 @@ export default function MealsScreen() {
   }
 
   return (
-    <View className="flex-1 bg-white">
+    <View style={styles.container}>
       <FlatList
         data={meals}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+        contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <View className="mb-4 p-4 rounded-xl bg-gray-50 border border-gray-200">
-            <Text className="text-gray-500 text-sm mb-1">{formatDate(item.createdAt)}</Text>
+          <View style={styles.mealCard}>
+            <Text style={styles.mealDate}>{formatDate(item.createdAt)}</Text>
             {item.foodItems && item.foodItems.length > 0 && (
-              <Text className="text-gray-800 font-medium mb-2">{item.foodItems.join(', ')}</Text>
+              <Text style={styles.mealItems}>{item.foodItems.join(', ')}</Text>
             )}
-            <View className="flex-row flex-wrap gap-2">
-              {item.estimatedCalories != null && (
-                <Text className="text-base text-gray-900">{item.estimatedCalories} cal</Text>
+            <View style={styles.mealNutrition}>
+              {item.estimatedCalories != null && item.estimatedCalories > 0 && (
+                <Text style={styles.mealCal}>{item.estimatedCalories} cal</Text>
               )}
               {item.macros && (
-                <Text className="text-sm text-gray-600">
+                <Text style={styles.mealMacros}>
                   P {item.macros.protein}g · C {item.macros.carbs}g · F {item.macros.fat}g
                 </Text>
               )}
             </View>
+            {(item.estimatedCalories == null || item.estimatedCalories === 0) && !item.macros && (
+              <Text style={styles.mealNoNutrition}>No nutrition data</Text>
+            )}
           </View>
         )}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: AppColors.background,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: AppColors.background,
+  },
+  padded: { paddingHorizontal: 24 },
+  loadingText: { color: AppColors.textSecondary, marginTop: 8 },
+  errorTitle: { color: '#dc2626', textAlign: 'center', fontWeight: '500', marginBottom: 8 },
+  errorText: { color: AppColors.textSecondary, textAlign: 'center', fontSize: 14 },
+  emptyText: {
+    color: AppColors.textSecondary,
+    textAlign: 'center',
+    fontSize: 18,
+    lineHeight: 26,
+  },
+  listContent: { padding: 16, paddingBottom: 24 },
+  mealCard: {
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: AppColors.card,
+    borderWidth: 1,
+    borderColor: AppColors.cardBorder,
+  },
+  mealDate: { color: AppColors.textSecondary, fontSize: 12, marginBottom: 4 },
+  mealItems: { color: AppColors.text, fontWeight: '500', marginBottom: 8 },
+  mealNutrition: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 4 },
+  mealCal: { fontSize: 17, fontWeight: '600', color: AppColors.text },
+  mealMacros: { fontSize: 15, color: AppColors.textSecondary },
+  mealNoNutrition: { fontSize: 14, color: AppColors.textSecondary, fontStyle: 'italic', marginTop: 4 },
+});

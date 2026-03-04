@@ -16,6 +16,9 @@ import {
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { auth, db, storage } from './firebaseConfig';
 
+const TRANSCRIBE_FUNCTION_URL =
+  'https://us-central1-calorie-app-chat.cloudfunctions.net/transcribeAudio';
+
 /**
  * Get or create a conversation document for the current user
  * Returns the conversation ID
@@ -100,6 +103,36 @@ export const uploadImageAndSendMessage = async (conversationId, role, uri) => {
   });
 
   return imageUrl;
+};
+
+/**
+ * Upload recorded audio to Storage, call transcribe Cloud Function, return transcript.
+ * @param {string} conversationId
+ * @param {string} uri - local file URI from expo-av Recording.getURI()
+ * @returns {Promise<string>} transcribed text
+ */
+export const transcribeAudio = async (conversationId, uri) => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('User must be authenticated');
+
+  const response = await fetch(uri);
+  const blob = await response.blob();
+  const filename = `audio/${conversationId}/${Date.now()}.m4a`;
+  const storageRef = ref(storage, filename);
+  await uploadBytes(storageRef, blob, { contentType: 'audio/m4a' });
+  const audioUrl = await getDownloadURL(storageRef);
+
+  const res = await fetch(TRANSCRIBE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audioUrl }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err || `Transcription failed: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.transcript ?? '';
 };
 
 /**

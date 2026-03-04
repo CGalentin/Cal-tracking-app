@@ -1,6 +1,7 @@
 // LoginScreen.js
 import React, { useState } from 'react';
 import { Alert, Button, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppColors } from '@/constants/theme';
 import { signIn, signUp } from './authService';
 
 export default function LoginScreen() {
@@ -93,7 +94,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: '#ffffff',
+    backgroundColor: AppColors.background,
   },
   title: {
     fontSize: 28,
