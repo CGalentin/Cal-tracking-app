@@ -1,77 +1,374 @@
-import { useRouter } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  calculateDailyTotals,
+  getTodayDateKey,
+  groupMealsByDate,
+  subscribeToMeals,
+} from '@/components/chatService';
+import { subscribeToProfile } from '@/components/userProfileService';
 import { AppColors } from '@/constants/theme';
+import type { UserProfile } from '@/types/userProfile';
+import { calculateDailyTarget, isCalorieTargetBelowSafe } from '@/utils/calorieTarget';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-export default function HomeScreen() {
-  const router = useRouter();
+const DEFAULT_CALORIE_GOAL = 2000;
+const MACRO_GOALS = { carbs: 220, protein: 140, fat: 65 };
 
-  const handleOpenChat = () => {
-    router.replace('/(tabs)/chat');
-  };
+const RING_SIZE = 180;
+const RING_STROKE = 14;
+const RING_RADIUS = RING_SIZE / 2;
+const INNER_SIZE = RING_SIZE - 2 * RING_STROKE;
 
+function CalorieBar({
+  eaten,
+  goal,
+  remaining,
+  progress,
+}: {
+  eaten: number;
+  goal: number;
+  remaining: number;
+  progress: number;
+}) {
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Welcome</Text>
-        <Text style={styles.subtitle}>
-          Log meals quickly with chat. Tap below to start.
-        </Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={handleOpenChat} activeOpacity={0.8}>
-          <Text style={styles.primaryButtonText}>Open Chat</Text>
-        </TouchableOpacity>
+    <View style={barStyles.wrapper}>
+      <Text style={barStyles.remainingValue}>{remaining}</Text>
+      <Text style={barStyles.remainingLabel}>CALS REMAINING</Text>
+      <View style={barStyles.track}>
+        <View style={[barStyles.fill, { width: `${Math.min(100, progress)}%` }]} />
+      </View>
+      <View style={barStyles.row}>
+        <Text style={barStyles.meta}>Goal {goal}</Text>
+        <Text style={barStyles.meta}>Eaten {eaten}</Text>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: AppColors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  card: {
+const barStyles = StyleSheet.create({
+  wrapper: { alignItems: 'center', width: '100%' },
+  remainingValue: { fontSize: 32, fontWeight: '700', color: AppColors.text },
+  remainingLabel: { fontSize: 11, color: AppColors.textSecondary, marginTop: 2, letterSpacing: 0.5 },
+  track: {
     width: '100%',
-    maxWidth: 400,
-    backgroundColor: AppColors.card,
-    borderRadius: 8,
-    padding: 24,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
+    height: 12,
+    backgroundColor: AppColors.cardBorder,
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginTop: 16,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: AppColors.text,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#555',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
-  },
-  primaryButton: {
+  fill: { height: '100%', backgroundColor: AppColors.primary, borderRadius: 6 },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     width: '100%',
+    marginTop: 12,
+    paddingHorizontal: 4,
+  },
+  meta: { fontSize: 14, color: AppColors.textSecondary },
+});
+
+function CalorieRing({
+  eaten,
+  goal,
+  remaining,
+  progress,
+}: {
+  eaten: number;
+  goal: number;
+  remaining: number;
+  progress: number;
+}) {
+  const clampedProgress = Math.min(1, progress);
+  const rotationDeg = -90 + clampedProgress * 360;
+  return (
+    <View style={ringStyles.wrapper}>
+      <View style={[ringStyles.ringContainer, { width: RING_SIZE, height: RING_SIZE }]}>
+        <View style={[ringStyles.track, { width: RING_SIZE, height: RING_SIZE, borderRadius: RING_RADIUS, borderWidth: RING_STROKE }]} />
+        <View style={ringStyles.progressClip}>
+          <View
+            style={[
+              ringStyles.semicircle,
+              {
+                width: RING_RADIUS,
+                height: RING_SIZE,
+                borderTopLeftRadius: RING_RADIUS,
+                borderBottomLeftRadius: RING_RADIUS,
+                transform: [{ rotate: `${rotationDeg}deg` }],
+              },
+            ]}
+          />
+        </View>
+        <View style={[ringStyles.innerMask, { width: INNER_SIZE, height: INNER_SIZE, borderRadius: INNER_SIZE / 2 }]} />
+        <View style={ringStyles.centerContent} pointerEvents="none">
+          <Text style={ringStyles.remainingValue}>{remaining}</Text>
+          <Text style={ringStyles.remainingLabel}>CALS REMAINING</Text>
+          <Text style={ringStyles.goalEaten}>
+            Goal {goal} · Eaten {eaten}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const ringStyles = StyleSheet.create({
+  wrapper: { alignItems: 'center', width: '100%' },
+  ringContainer: { alignItems: 'center', justifyContent: 'center' },
+  track: {
+    position: 'absolute',
+    borderColor: AppColors.cardBorder,
+    backgroundColor: 'transparent',
+  },
+  progressClip: {
+    position: 'absolute',
+    width: RING_SIZE,
+    height: RING_SIZE,
+    borderRadius: RING_RADIUS,
+    overflow: 'hidden',
+  },
+  semicircle: {
+    position: 'absolute',
+    left: RING_RADIUS / 2,
+    top: 0,
     backgroundColor: AppColors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+  },
+  innerMask: {
+    position: 'absolute',
+    top: RING_STROKE,
+    left: RING_STROKE,
+    backgroundColor: AppColors.card,
+  },
+  centerContent: { alignItems: 'center', justifyContent: 'center' },
+  remainingValue: { fontSize: 36, fontWeight: '700', color: AppColors.text },
+  remainingLabel: { fontSize: 11, color: AppColors.textSecondary, marginTop: 2, letterSpacing: 0.5 },
+  goalEaten: { fontSize: 13, color: AppColors.textSecondary, marginTop: 8 },
+});
+
+type MealItem = { id: string; foodItems?: string[]; estimatedCalories?: number; createdAt?: unknown };
+
+export default function HomeScreen() {
+  const router = useRouter();
+  const [meals, setMeals] = useState<MealItem[]>([]);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [burned, setBurned] = useState<number>(0);
+  const [burnedInput, setBurnedInput] = useState<string>('0');
+
+  useEffect(() => {
+    const unsub = subscribeToMeals((list) => setMeals(list), () => setMeals([]));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = subscribeToProfile(setProfile);
+    return () => unsub();
+  }, []);
+
+  const { todayTotals, todayMeals } = useMemo(() => {
+    const grouped = groupMealsByDate(meals);
+    const todayKey = getTodayDateKey();
+    const today = grouped.get(todayKey) ?? [];
+    return { todayTotals: calculateDailyTotals(today), todayMeals: today };
+  }, [meals]);
+
+  const eaten = todayTotals.totalCalories;
+  const calorieTarget = profile ? calculateDailyTarget(profile) : DEFAULT_CALORIE_GOAL;
+  const remaining = calorieTarget - eaten + burned;
+  const caloriePct = calorieTarget > 0 ? Math.min(100, (eaten / calorieTarget) * 100) : 0;
+  const showSafetyWarning = profile != null && isCalorieTargetBelowSafe(calorieTarget, profile.gender);
+  const carbsPct = Math.min(100, (todayTotals.totalCarbs / MACRO_GOALS.carbs) * 100);
+  const proteinPct = Math.min(100, (todayTotals.totalProtein / MACRO_GOALS.protein) * 100);
+  const fatPct = Math.min(100, (todayTotals.totalFat / MACRO_GOALS.fat) * 100);
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.dateRow}>
+        <Text style={styles.dateText}>
+          {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+        </Text>
+      </View>
+
+      {showSafetyWarning && (
+        <View style={styles.safetyBanner}>
+          <Text style={styles.safetyBannerText}>
+            Your daily target is below the recommended minimum. Consider a smaller deficit in settings.
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.calorieCard}>
+        {Platform.OS === 'web' ? (
+          <CalorieRing
+            eaten={eaten}
+            goal={calorieTarget}
+            remaining={remaining}
+            progress={caloriePct / 100}
+          />
+        ) : (
+          <CalorieBar
+            eaten={eaten}
+            goal={calorieTarget}
+            remaining={remaining}
+            progress={caloriePct}
+          />
+        )}
+      </View>
+
+      <View style={styles.twoCards}>
+        <View style={[styles.smallCard, styles.smallCardFirst]}>
+          <Text style={styles.smallCardLabel}>Calories Eaten</Text>
+          <Text style={styles.smallCardValue}>{eaten}</Text>
+        </View>
+        <View style={styles.smallCard}>
+          <Text style={styles.smallCardLabel}>Calories Burned</Text>
+          <TextInput
+            style={styles.burnedInput}
+            value={burnedInput}
+            onChangeText={setBurnedInput}
+            onBlur={() => {
+              const n = parseInt(burnedInput, 10);
+              if (Number.isNaN(n) || n < 0) {
+                setBurnedInput(String(burned));
+              } else {
+                const clamped = Math.max(0, Math.round(n));
+                setBurned(clamped);
+                setBurnedInput(String(clamped));
+              }
+            }}
+            placeholder="0"
+            placeholderTextColor={AppColors.textSecondary}
+            keyboardType="number-pad"
+          />
+        </View>
+      </View>
+
+      <Text style={styles.sectionTitle}>Macros</Text>
+      <View style={styles.macroBars}>
+        <View style={styles.macroRow}>
+          <Text style={styles.macroLabel}>Carbs</Text>
+          <View style={styles.macroTrack}>
+            <View style={[styles.macroFill, { width: `${carbsPct}%`, backgroundColor: AppColors.carbs }]} />
+          </View>
+          <Text style={styles.macroValues}>{todayTotals.totalCarbs}g/{MACRO_GOALS.carbs}g</Text>
+        </View>
+        <View style={styles.macroRow}>
+          <Text style={styles.macroLabel}>Protein</Text>
+          <View style={styles.macroTrack}>
+            <View style={[styles.macroFill, { width: `${proteinPct}%`, backgroundColor: AppColors.protein }]} />
+          </View>
+          <Text style={styles.macroValues}>{todayTotals.totalProtein}g/{MACRO_GOALS.protein}g</Text>
+        </View>
+        <View style={styles.macroRow}>
+          <Text style={styles.macroLabel}>Fat</Text>
+          <View style={styles.macroTrack}>
+            <View style={[styles.macroFill, { width: `${fatPct}%`, backgroundColor: AppColors.fat }]} />
+          </View>
+          <Text style={styles.macroValues}>{todayTotals.totalFat}g/{MACRO_GOALS.fat}g</Text>
+        </View>
+      </View>
+
+      <Text style={styles.sectionTitle}>Today&apos;s Meals</Text>
+      {todayMeals.length === 0 ? (
+        <TouchableOpacity style={styles.mealRow} onPress={() => router.replace('/(tabs)/chat')} activeOpacity={0.7}>
+          <Text style={styles.mealRowIcon}>🍽</Text>
+          <Text style={styles.mealRowLabel}>No meals yet</Text>
+          <Text style={styles.mealRowChevron}>›</Text>
+        </TouchableOpacity>
+      ) : (
+        todayMeals.slice(0, 5).map((meal) => (
+          <TouchableOpacity
+            key={meal.id}
+            style={styles.mealRow}
+            onPress={() => router.replace('/(tabs)/meals')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.mealRowIcon}>🍽</Text>
+            <Text style={styles.mealRowLabel} numberOfLines={1}>
+              {meal.foodItems?.length ? meal.foodItems.join(', ') : 'Meal'}
+            </Text>
+            <Text style={styles.mealRowCals}>{meal.estimatedCalories ?? 0} cals</Text>
+            <Text style={styles.mealRowChevron}>›</Text>
+          </TouchableOpacity>
+        ))
+      )}
+
+      <TouchableOpacity style={styles.logMealButton} onPress={() => router.replace('/(tabs)/chat')} activeOpacity={0.85}>
+        <Text style={styles.logMealButtonText}>Log a meal</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: AppColors.background },
+  content: { padding: 20, paddingBottom: 32 },
+  dateRow: { marginBottom: 20 },
+  dateText: { fontSize: 15, color: AppColors.textSecondary },
+  safetyBanner: {
+    backgroundColor: AppColors.fat,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  safetyBannerText: { fontSize: 13, color: AppColors.text },
+  calorieCard: {
+    backgroundColor: AppColors.card,
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: AppColors.cardBorder,
     alignItems: 'center',
   },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
+  twoCards: { flexDirection: 'row', marginBottom: 24 },
+  smallCard: {
+    flex: 1,
+    backgroundColor: AppColors.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: AppColors.cardBorder,
+    marginHorizontal: 6,
   },
+  smallCardFirst: { marginLeft: 0 },
+  smallCardLabel: { fontSize: 13, color: AppColors.textSecondary, marginBottom: 4 },
+  smallCardValue: { fontSize: 22, fontWeight: '700', color: AppColors.text },
+  burnedInput: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: AppColors.text,
+    padding: 0,
+    minWidth: 48,
+    textAlign: 'center',
+  },
+  sectionTitle: { fontSize: 18, fontWeight: '600', color: AppColors.text, marginBottom: 12 },
+  macroBars: { marginBottom: 24 },
+  macroRow: { marginBottom: 12 },
+  macroLabel: { fontSize: 14, color: AppColors.text, marginBottom: 6 },
+  macroTrack: { height: 10, backgroundColor: AppColors.cardBorder, borderRadius: 5, overflow: 'hidden' },
+  macroFill: { height: '100%', borderRadius: 5 },
+  macroValues: { fontSize: 12, color: AppColors.textSecondary, marginTop: 4 },
+  mealRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: AppColors.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: AppColors.cardBorder,
+    marginBottom: 8,
+  },
+  mealRowIcon: { fontSize: 20, marginRight: 12 },
+  mealRowLabel: { flex: 1, fontSize: 16, color: AppColors.text, fontWeight: '500' },
+  mealRowCals: { fontSize: 14, color: AppColors.textSecondary, marginRight: 8 },
+  mealRowChevron: { fontSize: 20, color: AppColors.textSecondary },
+  logMealButton: {
+    backgroundColor: AppColors.primary,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  logMealButtonText: { fontSize: 16, fontWeight: '600', color: '#ffffff' },
 });

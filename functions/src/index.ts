@@ -1,14 +1,14 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 import speech from "@google-cloud/speech";
-import * as admin from "firebase-admin";
-import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
+import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import * as logger from "firebase-functions/logger";
 import { defineSecret } from "firebase-functions/params";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import ffmpeg from "fluent-ffmpeg";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import sharp from "sharp";
 
 if (!admin.apps.length) {

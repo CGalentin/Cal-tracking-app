@@ -18,6 +18,7 @@ const MAPPING = {
   'message.fill': 'chat',
   'paperplane.fill': 'send',
   'fork.knife': 'restaurant',
+  'flag.fill': 'flag',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
 } as IconMapping;

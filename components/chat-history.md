@@ -388,6 +388,21 @@ npx firebase deploy --only firestore
 - **Reuse voice correction logic:** Typed and voice corrections both use sendMessage → onTextMealMessageCreated; no separate flow needed.
 - **Display updated macros inline:** Backend adds macros and isCorrectionUpdate to correction response. Client renders "Updated" messages as a structured card with food items and nutrition (cal, P, C, F) inline.
 
+### Session: PR 17 — Meal History & Daily Summary
+
+- **Backend (chatService.js):**
+  - Added `getMealDateKey(timestamp)` — converts Firestore timestamp to YYYY-MM-DD.
+  - Added `getTodayDateKey()` — returns today's date as YYYY-MM-DD.
+  - Added `calculateDailyTotals(meals)` — sums calories and macros from an array of meals.
+  - Added `groupMealsByDate(meals)` — groups meals by date, returns Map sorted descending.
+  - Added `formatDateKeyForDisplay(dateKey)` — returns "Today", "Yesterday", or formatted date.
+- **Client (app/(tabs)/meals.tsx):**
+  - Replaced FlatList with SectionList for grouped-by-date display.
+  - Added "Today" summary card at top showing total calories and macros (P, C, F).
+  - Section headers show date ("Today", "Yesterday", etc.) with daily totals.
+  - Meals within each section show time instead of full date.
+  - Shows "No meals logged today" when today has no meals.
+
 ### Remaining / Future Tasks
 
 - Follow `to-dos.md` and `PRD.md` to build out:
@@ -398,6 +413,6 @@ npx firebase deploy --only firestore
   - ~~Voice-based corrections flow (PR 14).~~ **Done.**
   - ~~Update meal after corrections (PR 15).~~ **Done.**
   - ~~Manual text corrections (PR 16).~~ **Done.**
-  - Meal history & daily summary (PR 17).
+  - ~~Meal history & daily summary (PR 17).~~ **Done.**
   - Error handling (PR 18).
   - Onboarding & help (PR 19).

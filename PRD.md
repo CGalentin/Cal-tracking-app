@@ -265,6 +265,70 @@ Follow-up questions decrease over time
 
 Users can opt out of assumptions
 
+6.8 Calorie Target Calculation
+
+Feature Overview
+
+Provide users with a personalized daily calorie target based on their physical profile and weight loss goals.
+
+User Input Requirements
+
+The app must collect the following variables:
+
+Weight: (kg or lbs)
+
+Height: (cm or inches)
+
+Age: (years)
+
+Biological Sex: (required for BMR accuracy)
+
+Activity Level: (Sedentary, Light, Moderate, Active, Very Active)
+
+Goal: (e.g., Lose 0.5 kg per week)
+
+Functional Logic (The Math)
+
+To calculate the daily target, use the Mifflin-St Jeor equation.
+
+Step 1: Calculate BMR
+
+Men: BMR = (10 × weight in kg) + (6.25 × height in cm) - (5 × age) + 5
+
+Women: BMR = (10 × weight in kg) + (6.25 × height in cm) - (5 × age) - 161
+
+(If user supplies imperial units, convert to metric before calculation.)
+
+Step 2: Calculate TDEE
+
+Multiply BMR by an activity multiplier:
+
+Sedentary: 1.2
+
+Light: 1.375
+
+Moderate: 1.55
+
+Active: 1.725
+
+Very Active: 1.9
+
+TDEE = BMR × activity multiplier
+
+Step 3: Calculate Weight Loss Target
+
+Daily Target = TDEE - Deficit
+
+Standard deficit: 500 calories per day for approximately 1 lb (0.5 kg) loss per week.
+
+Acceptance Criteria
+
+User can enter or update profile (weight, height, age, sex, activity level, goal).
+
+App displays a personalized daily calorie target.
+
+Target is used to drive “remaining” or “goal” in logging and visualization (e.g., Home / Meals).
+
 7. User Stories (MVP)
 
 Fast Logging

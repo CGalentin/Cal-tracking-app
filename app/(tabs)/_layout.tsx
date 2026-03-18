@@ -3,9 +3,9 @@ import React from 'react';
 import { Pressable, Text } from 'react-native';
 
 import { logOut } from '@/components/authService';
-import { AppColors } from '@/constants/theme';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { AppColors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
@@ -22,12 +22,12 @@ export default function TabLayout() {
         tabBarInactiveTintColor: AppColors.textSecondary,
         tabBarStyle: { backgroundColor: AppColors.card, borderTopColor: AppColors.cardBorder },
         headerShown: true,
-        headerStyle: { backgroundColor: AppColors.primary },
-        headerTintColor: '#ffffff',
-        headerTitleStyle: { fontWeight: '600', fontSize: 18 },
+        headerStyle: { backgroundColor: AppColors.background },
+        headerTintColor: AppColors.text,
+        headerTitleStyle: { fontWeight: '600', fontSize: 18, color: AppColors.text },
         headerRight: () => (
           <Pressable onPress={handleLogout} style={{ marginRight: 16 }}>
-            <Text style={{ color: '#ffffff', fontWeight: '600' }}>Log out</Text>
+            <Text style={{ color: AppColors.primary, fontWeight: '600' }}>Log out</Text>
           </Pressable>
         ),
         tabBarButton: HapticTab,
@@ -37,6 +37,13 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="onboarding"
+        options={{
+          title: 'Set up',
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -51,6 +58,13 @@ export default function TabLayout() {
         options={{
           title: 'Meals',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="fork.knife" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="goals"
+        options={{
+          title: 'Goals',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="flag.fill" color={color} />,
         }}
       />
       <Tabs.Screen

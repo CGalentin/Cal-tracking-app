@@ -146,6 +146,121 @@ export const clearAllMessages = async (conversationId) => {
 };
 
 /**
+ * PR 17 — Get date key (YYYY-MM-DD) from a Firestore timestamp for grouping meals by day.
+ * @param {unknown} timestamp - Firestore timestamp or object with seconds
+ * @returns {string} Date string in YYYY-MM-DD format, or '' if invalid
+ */
+export const getMealDateKey = (timestamp) => {
+  if (timestamp == null) return '';
+  const ms =
+    typeof timestamp.toMillis === 'function'
+      ? timestamp.toMillis()
+      : timestamp?.seconds != null
+        ? timestamp.seconds * 1000
+        : null;
+  if (ms == null || typeof ms !== 'number') return '';
+  const d = new Date(ms);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * PR 17 — Get today's date key (YYYY-MM-DD) in local timezone.
+ * @returns {string} Today's date in YYYY-MM-DD format
+ */
+export const getTodayDateKey = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * PR 17 — Calculate daily totals (calories and macros) from an array of meals.
+ * @param {Array} meals - Array of meal objects with estimatedCalories and macros
+ * @returns {{ totalCalories: number, totalProtein: number, totalCarbs: number, totalFat: number, mealCount: number }}
+ */
+export const calculateDailyTotals = (meals) => {
+  let totalCalories = 0;
+  let totalProtein = 0;
+  let totalCarbs = 0;
+  let totalFat = 0;
+
+  for (const meal of meals) {
+    if (meal.estimatedCalories != null && meal.estimatedCalories > 0) {
+      totalCalories += meal.estimatedCalories;
+    }
+    if (meal.macros) {
+      totalProtein += meal.macros.protein ?? 0;
+      totalCarbs += meal.macros.carbs ?? 0;
+      totalFat += meal.macros.fat ?? 0;
+    }
+  }
+
+  return {
+    totalCalories,
+    totalProtein,
+    totalCarbs,
+    totalFat,
+    mealCount: meals.length,
+  };
+};
+
+/**
+ * PR 17 — Group meals by date (YYYY-MM-DD). Returns a Map with date keys and meal arrays.
+ * @param {Array} meals - Array of meal objects with createdAt timestamps
+ * @returns {Map<string, Array>} Map of date keys to meal arrays, sorted by date descending
+ */
+export const groupMealsByDate = (meals) => {
+  const groups = new Map();
+
+  for (const meal of meals) {
+    const dateKey = getMealDateKey(meal.createdAt);
+    if (!dateKey) continue;
+    if (!groups.has(dateKey)) {
+      groups.set(dateKey, []);
+    }
+    groups.get(dateKey).push(meal);
+  }
+
+  // Sort keys descending (most recent first)
+  const sortedKeys = [...groups.keys()].sort((a, b) => b.localeCompare(a));
+  const sortedGroups = new Map();
+  for (const key of sortedKeys) {
+    sortedGroups.set(key, groups.get(key));
+  }
+
+  return sortedGroups;
+};
+
+/**
+ * PR 17 — Format a date key (YYYY-MM-DD) for display.
+ * Returns "Today", "Yesterday", or a formatted date string.
+ * @param {string} dateKey - Date in YYYY-MM-DD format
+ * @returns {string} Formatted display string
+ */
+export const formatDateKeyForDisplay = (dateKey) => {
+  const today = getTodayDateKey();
+  if (dateKey === today) return 'Today';
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+  if (dateKey === yesterdayKey) return 'Yesterday';
+
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+/**
  * Subscribe to logged meals for the current user (for Meals tab).
  * Returns an unsubscribe function.
  * Uses where('userId', '==') only so no composite index is required; sorts by createdAt in memory.

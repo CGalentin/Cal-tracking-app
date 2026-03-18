@@ -226,35 +226,72 @@
 ## PR 17 — Meal History & Daily Summary
 
 ### Backend
-- [ ] Query meals by date
-- [ ] Calculate daily totals
+- [x] Query meals by date
+- [x] Calculate daily totals
 
 ### Client
-- [ ] Create daily summary screen
-- [ ] Display calories & macros
-- [ ] List meals for the day
+- [x] Create daily summary screen
+- [x] Display calories & macros
+- [x] List meals for the day
+
+---
+
+## To-Do List: Calorie Target Calculation (Implementation Steps)
+
+### Phase 1: Data Architecture
+- [x] Create a UserProfile schema to store weight, height, age, and gender.
+- [x] Map "Activity Levels" to numerical multipliers in a constant file.
+
+### Phase 2: Logic & Integration
+- [x] Create a utility function `calculateBMR()` using the Mifflin-St Jeor formula.
+- [x] Create a function `calculateDailyTarget()` that subtracts the user's chosen deficit from their TDEE.
+- [x] Implement a "Target Weight" vs "Current Weight" progress bar logic.
+
+### Phase 3: UI/UX
+- [x] Build an onboarding flow to capture user physical metrics.
+- [x] Add a "Safety Warning" if the calculated daily calorie target falls below 1,200 (women) or 1,500 (men) calories.
+- [x] Design the dashboard card to display "Calories Remaining" (Target - Consumed + Burned).
 
 ---
 
 ## PR 18 — Error Handling & Beginner Safety
 
 ### Client
-- [ ] Handle failed uploads
-- [ ] Handle AI errors gracefully
-- [ ] Show retry options
+- [ ] Add error boundaries for crash recovery
+- [ ] Show user-friendly error messages (network, auth, Firebase)
+- [ ] Handle image upload failures gracefully
+- [ ] Handle voice recording failures gracefully
+- [ ] Add retry buttons for failed operations
 
 ### Backend
-- [ ] Validate all AI responses
-- [ ] Add fallback messages when unsure
+- [ ] Add try/catch to all Cloud Functions
+- [ ] Log errors to Firebase console
+- [ ] Return meaningful error messages to client
+
+### UX
+- [ ] Show loading spinners during async operations
+- [ ] Disable buttons while processing
+- [ ] Prevent double-tap/duplicate submissions
 
 ---
 
 ## PR 19 — Onboarding & Help
 
-### UX
-- [ ] Welcome message explaining flow
-- [ ] Example image prompt
-- [ ] Voice correction explanation
+### First-Time User Experience
+- [ ] Create onboarding flow (3-4 screens explaining app features)
+- [ ] Show onboarding only on first launch (AsyncStorage flag)
+- [ ] Add "Skip" button to onboarding
+
+### Help & Guidance
+- [ ] Add help/info button to chat screen
+- [ ] Create help modal with tips (how to log meals, corrections, voice input)
+- [ ] Add example prompts or suggestions for new users
+
+### Settings
+- [ ] Create settings screen
+- [ ] Add option to reset onboarding
+- [ ] Add logout button in settings
+- [ ] Display user info (email, display name)
 
 ---
 

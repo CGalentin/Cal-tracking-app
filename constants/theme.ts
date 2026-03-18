@@ -5,18 +5,21 @@
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+const tintColorLight = '#14b8a6';
+const tintColorDark = '#14b8a6';
 
-/** Light blue theme to match app icon — used across Login, Home, Chat, Meals */
+/** Fuel Daily–style dark theme: teal primary, green/orange macros */
 export const AppColors = {
-  background: '#E6F4FE',
-  backgroundAlt: '#d4edfc',
-  card: '#ffffff',
-  cardBorder: '#b8dff8',
-  text: '#1a1a1a',
-  textSecondary: '#4a5568',
-  primary: '#007AFF',
+  background: '#0f1419',
+  backgroundAlt: '#1a2332',
+  card: '#1a2332',
+  cardBorder: '#2d3a4f',
+  text: '#ffffff',
+  textSecondary: '#94a3b8',
+  primary: '#14b8a6',
+  carbs: '#14b8a6',
+  protein: '#22c55e',
+  fat: '#f59e0b',
 };
 
 export const Colors = {
