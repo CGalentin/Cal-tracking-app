@@ -11,7 +11,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from './firebaseConfig';
-import type { UserProfile, UserProfileInput } from '../types/userProfile';
+import type { UnitSystem, UserProfile, UserProfileInput } from '../types/userProfile';
 
 const COLLECTION = 'userProfiles';
 
@@ -31,6 +31,7 @@ function profileFromDoc(data: Record<string, unknown> | undefined): UserProfile 
   ) {
     return null;
   }
+  const useUnits = data.useUnits as UnitSystem | undefined;
   return {
     weightKg,
     heightCm,
@@ -39,6 +40,7 @@ function profileFromDoc(data: Record<string, unknown> | undefined): UserProfile 
     activityLevelId,
     targetWeightKg: data.targetWeightKg as number | undefined,
     dailyCalorieDelta: data.dailyCalorieDelta as number | undefined,
+    useUnits: useUnits === 'metric' ? 'metric' : 'standard',
     updatedAt: data.updatedAt,
   };
 }

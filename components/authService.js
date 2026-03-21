@@ -2,6 +2,7 @@
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
@@ -9,6 +10,7 @@ import {
 import { auth } from './firebaseConfig';
 
 // Sign up new user — returns { success, user? } or { success: false, error } (error is the raw Error for mapping)
+// Sends a verification email so the user can confirm their address is valid.
 export const signUp = async (email, password, displayName) => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -17,7 +19,21 @@ export const signUp = async (email, password, displayName) => {
       await updateProfile(userCredential.user, { displayName });
     }
 
+    await sendEmailVerification(userCredential.user);
     return { success: true, user: userCredential.user };
+  } catch (error) {
+    return { success: false, error };
+  }
+};
+
+// Resend verification email for the current user (for verify-email screen)
+export const resendVerificationEmail = async () => {
+  try {
+    const user = auth.currentUser;
+    if (!user) return { success: false, error: new Error('Not signed in') };
+    if (user.emailVerified) return { success: true };
+    await sendEmailVerification(user);
+    return { success: true };
   } catch (error) {
     return { success: false, error };
   }

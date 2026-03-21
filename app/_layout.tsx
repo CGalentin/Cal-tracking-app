@@ -55,19 +55,30 @@ export default function RootLayout() {
     };
   }, [user]);
 
-  // Redirect based on auth state and profile (from login → onboarding / goals / feature tour / home)
+  // Redirect based on auth state and profile (from login → verify-email → onboarding / goals / feature tour / home)
   useEffect(() => {
     if (loading) return;
 
     const inAuthGroup = segments[0] === 'login';
+    const inVerifyEmail = segments[0] === 'verify-email';
     const isLoggedIn = !!user;
+    const firebaseUser = user as { emailVerified?: boolean } | null;
+    const needsVerification = isLoggedIn && firebaseUser && !firebaseUser.emailVerified;
 
     if (!isLoggedIn && !inAuthGroup) {
       router.replace('login');
       return undefined;
     }
 
-    if (!isLoggedIn || !inAuthGroup) return undefined;
+    if (!isLoggedIn) return undefined;
+    if (!inAuthGroup && !inVerifyEmail) return undefined;
+
+    // Require email verification before proceeding
+    if (needsVerification && !inVerifyEmail) {
+      router.replace('verify-email');
+      return undefined;
+    }
+
     if (profile === undefined) return undefined;
 
     const isNative = Platform.OS !== 'web';
@@ -142,6 +153,7 @@ export default function RootLayout() {
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack>
           <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="verify-email" options={{ headerShown: false }} />
           <Stack.Screen name="feature-tour" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />

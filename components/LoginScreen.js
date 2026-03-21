@@ -46,7 +46,12 @@ export default function LoginScreen() {
         : await signIn(email, password);
 
       if (result.success) {
-        Alert.alert('Success', isSignUp ? 'Account created!' : 'Logged in!');
+        Alert.alert(
+          'Success',
+          isSignUp
+            ? 'Account created! Please check your email and click the verification link to continue.'
+            : 'Logged in!'
+        );
       } else {
         const message = getUserFriendlyMessage(result.error, 'auth');
         Alert.alert('Error', message);

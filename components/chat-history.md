@@ -477,3 +477,29 @@ npx firebase deploy --only firestore
 - **Settings tab:** `app/(tabs)/settings.tsx` — email, display name; reset welcome tour (next launch); show tour now; **Log out**. Global header “Log out” removed from tabs.
 - **Chat:** Header `?` → `components/ChatHelpModal.tsx`. Empty chat shows “Try an example” horizontal chips (`constants/examplePrompts.ts`).
 - **Icons:** `gearshape.fill` → settings, `questionmark.circle` → help-outline in `icon-symbol.tsx`.
+
+### Session: Post-PR 19 — Polish, Deployment & Features
+
+- **PR 18 backend fix:** Fixed `onImageMessageCreated` in `functions/src/index.ts` — malformed line (curly apostrophe before `timestamp`), removed duplicate block with wrong `visionMsgRef` and orphan logic. `messageParts.join(" ")` now used correctly.
+
+- **Settings — Editable display name:** Added `updateDisplayName()` in `components/authService.js` (Firebase `updateProfile`). Settings tab shows inline edit: "Change" link → TextInput with Cancel/Save. UI refreshes via `onAuthStateChanged`.
+
+- **Goals — Manual calorie entry:** Custom TextInput "Or enter manually (kcal)" with placeholder "-500 to lose, +500 to gain". Parsed value overrides preset when valid. `buildInput()` uses custom value when present.
+
+- **Chat — Icon colors:** Mic and camera buttons use `AppColors.primary` (teal) to match send button. Send button disabled state uses teal with 50% opacity (no gray). User message bubbles and "You" label changed from blue (`#007AFF`) to teal.
+
+- **Home — Circular calorie graph:** Added `react-native-svg` (v15.11.2). `CalorieRing` with `Svg` and `Circle` — track `#ca8a04` (warm amber), progress teal (`AppColors.primary`), over-goal amber (`AppColors.fat`). 160px ring, 12px stroke, progress from 12 o'clock. Used on both web and mobile; `CalorieBar` removed.
+
+- **Deployment:** Created `DEPLOYMENT.md` (step-by-step Vercel + Firebase guide) and `vercel.json` (build command, output dir). Firebase: add Vercel domain to Auth authorized domains. Functions: `firebase functions:secrets:set GEMINI_API_KEY`, `firebase deploy --only functions`.
+
+- **Email verification:** `signUp` in `authService.js` calls `sendEmailVerification()` after account creation. New `app/verify-email.tsx` — "Verify your email" with resend and sign-out. `resendVerificationEmail()` added. Root layout redirects unverified users to verify-email; after verification, proceeds to onboarding/home. LoginScreen success message: "Please check your email and click the verification link."
+
+- **Metric / Standard units:** Added `useUnits` to `UserProfile` ('metric' | 'standard', default 'standard'). `utils/unitConversions.ts` — kg↔lb, cm↔ft+in. Goals and onboarding: toggle for Standard (lbs, ft/in) or Metric (kg, cm). Weight, height, target weight inputs and DEFICIT_OPTIONS labels update by unit. Daily calorie change presets: "Lose ~1 lb/week" vs "Lose ~0.5 kg/week". Preference saved to profile.
+
+- **Chat — Text visibility:** Assistant message bubble uses `AppColors.card` (dark) with `AppColors.text` (white). Text input field: `color: AppColors.text` so typed text is readable on dark background.
+
+- **Chat — Try an example dropdown:** "Try an example" is a collapsible header. Tapping toggles expanded/collapsed. Chevron rotates 90° when expanded. Default expanded. State: `examplesExpanded`.
+
+- **Chat — Assistant name:** Renamed label from "Assistant" to "Cally" above assistant message bubbles.
+
+- **Chat — Yes/No confirmation colors:** Yes button uses `AppColors.primary` (teal). No button uses `rgb(227, 0, 0)`.

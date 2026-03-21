@@ -1,9 +1,16 @@
 import type { ActivityLevelId } from '../constants/activityLevels';
 
 /**
+ * Unit preference for display: standard (lbs, ft/in) or metric (kg, cm).
+ * Default is 'standard'.
+ */
+export type UnitSystem = 'metric' | 'standard';
+
+/**
  * UserProfile — physical metrics and preferences for calorie target calculation.
  * Stored in Firestore at userProfiles/{userId}.
  * All units are metric for consistent BMR/TDEE math (Mifflin–St Jeor).
+ * useUnits controls display preference only; stored values remain in kg/cm.
  */
 
 export type Gender = 'male' | 'female';
@@ -26,6 +33,8 @@ export interface UserProfile {
   targetWeightKg?: number;
   /** Optional: daily calorie deficit/surplus in kcal. Negative = deficit (lose), 0 = maintain, positive = surplus (gain). */
   dailyCalorieDelta?: number;
+  /** Display units: 'standard' (lbs, ft/in) or 'metric' (kg, cm). Default 'standard'. */
+  useUnits?: UnitSystem;
   /** Client-only: when the profile was last updated (Firestore updatedAt). */
   updatedAt?: unknown;
 }
@@ -35,5 +44,5 @@ export interface UserProfile {
  * All fields optional for partial updates.
  */
 export type UserProfileInput = Partial<
-  Pick<UserProfile, 'weightKg' | 'heightCm' | 'age' | 'gender' | 'activityLevelId' | 'targetWeightKg' | 'dailyCalorieDelta'>
+  Pick<UserProfile, 'weightKg' | 'heightCm' | 'age' | 'gender' | 'activityLevelId' | 'targetWeightKg' | 'dailyCalorieDelta' | 'useUnits'>
 >;

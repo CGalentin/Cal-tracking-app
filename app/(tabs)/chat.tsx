@@ -66,6 +66,7 @@ export default function ChatScreen() {
   const [lastUploadError, setLastUploadError] = useState<string | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [examplesExpanded, setExamplesExpanded] = useState(true);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const sessionStartRef = useRef<number>(Date.now());
@@ -310,7 +311,7 @@ export default function ChatScreen() {
       <View style={[styles.messageRow, { width: screenWidth }]}>
         <View style={styles.messageContainer}>
           <Text style={[styles.messageLabel, isUser ? styles.messageLabelUser : styles.messageLabelAssistant]}>
-            {isUser ? 'You' : 'Assistant'}
+            {isUser ? 'You' : 'Cally'}
           </Text>
           <View style={[styles.messageBubble, bubbleStyle]}>
             {message.type === 'image' && message.imageUrl ? (
@@ -485,23 +486,39 @@ export default function ChatScreen() {
 
       {messages.length === 0 && !selectedImageUri ? (
         <View style={styles.promptsSection}>
-          <Text style={styles.promptsLabel}>Try an example</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.promptsRow}>
-            {EXAMPLE_MEAL_PROMPTS.map((prompt) => (
-              <TouchableOpacity
-                key={prompt}
-                style={styles.promptChip}
-                onPress={() => setInputText(prompt)}
-                activeOpacity={0.85}>
-                <Text style={styles.promptChipText} numberOfLines={2}>
-                  {prompt}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <TouchableOpacity
+            style={styles.promptsHeader}
+            onPress={() => setExamplesExpanded((e) => !e)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.promptsLabel}>Try an example</Text>
+            <IconSymbol
+              name="chevron.right"
+              size={20}
+              color={AppColors.textSecondary}
+              style={{ transform: [{ rotate: examplesExpanded ? '90deg' : '0deg' }] }}
+            />
+          </TouchableOpacity>
+          {examplesExpanded && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.promptsRow}
+            >
+              {EXAMPLE_MEAL_PROMPTS.map((prompt) => (
+                <TouchableOpacity
+                  key={prompt}
+                  style={styles.promptChip}
+                  onPress={() => setInputText(prompt)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.promptChipText} numberOfLines={2}>
+                    {prompt}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
       ) : null}
 
@@ -617,7 +634,7 @@ const styles = StyleSheet.create({
     color: AppColors.primary,
   },
   messageLabelAssistant: {
-    color: '#6b7280',
+    color: AppColors.textSecondary,
   },
   messageBubble: {
     maxWidth: '100%',
@@ -639,9 +656,9 @@ const styles = StyleSheet.create({
     backgroundColor: AppColors.primary,
   },
   messageBubbleAssistant: {
-    backgroundColor: '#ffffff',
+    backgroundColor: AppColors.card,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: AppColors.cardBorder,
   },
   mealLoggedCard: {
     paddingVertical: 4,
@@ -708,7 +725,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   messageTextAssistant: {
-    color: '#1f2937',
+    color: AppColors.text,
     fontWeight: '400',
   },
   photoPreviewContainer: {
@@ -727,15 +744,22 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingLeft: 16,
   },
+  promptsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 16,
+    marginBottom: 4,
+  },
   promptsLabel: {
     fontSize: 13,
     fontWeight: '600',
     color: AppColors.textSecondary,
-    marginBottom: 10,
   },
   promptsRow: {
     flexDirection: 'row',
     paddingRight: 16,
+    paddingTop: 6,
     alignItems: 'stretch',
   },
   promptChip: {
@@ -832,6 +856,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     fontSize: 16,
+    color: AppColors.text,
     backgroundColor: AppColors.card,
   },
   sendButton: {
@@ -868,7 +893,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     minHeight: 48,
     borderRadius: 12,
-    backgroundColor: '#22c55e',
+    backgroundColor: AppColors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS !== 'web' && {
@@ -884,9 +909,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     minHeight: 48,
     borderRadius: 12,
-    backgroundColor: '#e91640',
+    backgroundColor: 'rgb(227, 0, 0)',
     borderWidth: 1,
-    borderColor: '#e91640',
+    borderColor: 'rgb(227, 0, 0)',
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS !== 'web' && {

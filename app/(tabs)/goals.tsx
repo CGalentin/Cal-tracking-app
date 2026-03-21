@@ -1,7 +1,7 @@
 import { ACTIVITY_LEVEL_LABELS } from '@/constants/activityLevels';
 import type { ActivityLevelId } from '@/constants/activityLevels';
 import { AppColors } from '@/constants/theme';
-import type { Gender } from '@/types/userProfile';
+import type { Gender, UnitSystem } from '@/types/userProfile';
 import { setProfile, subscribeToProfile } from '@/components/userProfileService';
 import {
   calculateDailyTarget,
@@ -9,6 +9,7 @@ import {
   MIN_DAILY_CALORIES_FEMALE,
   MIN_DAILY_CALORIES_MALE,
 } from '@/utils/calorieTarget';
+import { cmToFtIn, ftInToCm, kgToLb, lbToKg } from '@/utils/unitConversions';
 import type { UserProfile } from '@/types/userProfile';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -25,7 +26,7 @@ import {
   View,
 } from 'react-native';
 
-const DEFICIT_OPTIONS = [
+const DEFICIT_OPTIONS_METRIC = [
   { label: 'Lose ~0.5 kg/week', value: -500 },
   { label: 'Lose ~0.25 kg/week', value: -250 },
   { label: 'Maintain weight', value: 0 },
@@ -33,48 +34,116 @@ const DEFICIT_OPTIONS = [
   { label: 'Gain ~0.5 kg/week', value: 500 },
 ];
 
+const DEFICIT_OPTIONS_STANDARD = [
+  { label: 'Lose ~1 lb/week', value: -500 },
+  { label: 'Lose ~0.5 lb/week', value: -250 },
+  { label: 'Maintain weight', value: 0 },
+  { label: 'Gain ~0.5 lb/week', value: 250 },
+  { label: 'Gain ~1 lb/week', value: 500 },
+];
+
 export default function GoalsScreen() {
   const router = useRouter();
   const [profile, setProfileState] = useState<UserProfile | null>(null);
-  const [weightKg, setWeightKg] = useState('');
-  const [heightCm, setHeightCm] = useState('');
+  const [useUnits, setUseUnits] = useState<UnitSystem>('standard');
+  const [weightInput, setWeightInput] = useState('');
+  const [heightCmInput, setHeightCmInput] = useState('');
+  const [heightFtInput, setHeightFtInput] = useState('');
+  const [heightInInput, setHeightInInput] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState<Gender>('female');
   const [activityLevelId, setActivityLevelId] = useState<ActivityLevelId>('sedentary');
-  const [targetWeightKg, setTargetWeightKg] = useState('');
+  const [targetWeightInput, setTargetWeightInput] = useState('');
   const [dailyCalorieDelta, setDailyCalorieDelta] = useState(0);
   const [customDeltaInput, setCustomDeltaInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [skipping, setSkipping] = useState(false);
 
   const needsGoals = profile != null && profile.dailyCalorieDelta === undefined;
+  const DEFICIT_OPTIONS = useUnits === 'metric' ? DEFICIT_OPTIONS_METRIC : DEFICIT_OPTIONS_STANDARD;
 
   useEffect(() => {
     const unsub = subscribeToProfile((p) => {
       setProfileState(p ?? null);
       if (p) {
-        setWeightKg(String(p.weightKg));
-        setHeightCm(String(p.heightCm));
+        const units = p.useUnits ?? 'standard';
+        setUseUnits(units);
+        if (units === 'metric') {
+          setWeightInput(String(p.weightKg));
+          setHeightCmInput(String(p.heightCm));
+          setTargetWeightInput(p.targetWeightKg != null ? String(p.targetWeightKg) : '');
+        } else {
+          setWeightInput(String(Math.round(kgToLb(p.weightKg) * 10) / 10));
+          const [ft, inVal] = cmToFtIn(p.heightCm);
+          setHeightFtInput(String(ft));
+          setHeightInInput(String(Math.round(inVal * 10) / 10));
+          setTargetWeightInput(
+            p.targetWeightKg != null ? String(Math.round(kgToLb(p.targetWeightKg) * 10) / 10) : ''
+          );
+        }
         setAge(String(p.age));
         setGender(p.gender);
         setActivityLevelId(p.activityLevelId);
-        setTargetWeightKg(p.targetWeightKg != null ? String(p.targetWeightKg) : '');
         const delta = p.dailyCalorieDelta ?? 0;
         setDailyCalorieDelta(delta);
-        const isPreset = DEFICIT_OPTIONS.some((o) => o.value === delta);
+        const opts = units === 'metric' ? DEFICIT_OPTIONS_METRIC : DEFICIT_OPTIONS_STANDARD;
+        const isPreset = opts.some((o) => o.value === delta);
         setCustomDeltaInput(isPreset ? '' : String(delta));
       }
     });
     return () => unsub();
   }, []);
 
+  const handleUnitsChange = (units: UnitSystem) => {
+    if (units === useUnits) return;
+    const weightKg =
+      useUnits === 'metric' ? Number(weightInput) || 70 : lbToKg(Number(weightInput) || 70);
+    const heightCm =
+      useUnits === 'metric'
+        ? Number(heightCmInput) || 170
+        : ftInToCm(Number(heightFtInput) || 5, Number(heightInInput) || 10);
+    const targetKg =
+      targetWeightInput.trim() !== ''
+        ? useUnits === 'metric'
+          ? Number(targetWeightInput)
+          : lbToKg(Number(targetWeightInput))
+        : null;
+    setUseUnits(units);
+    if (units === 'metric') {
+      setWeightInput(String(Math.round(weightKg * 10) / 10));
+      setHeightCmInput(String(Math.round(heightCm)));
+      setTargetWeightInput(targetKg != null ? String(Math.round(targetKg * 10) / 10) : '');
+    } else {
+      setWeightInput(String(Math.round(kgToLb(weightKg) * 10) / 10));
+      const [ft, inVal] = cmToFtIn(heightCm);
+      setHeightFtInput(String(ft));
+      setHeightInInput(String(Math.round(inVal * 10) / 10));
+      setTargetWeightInput(targetKg != null ? String(Math.round(kgToLb(targetKg) * 10) / 10) : '');
+    }
+  };
+
   const buildInput = (): Parameters<typeof setProfile>[0] => {
-    const w = Number(weightKg) || profile?.weightKg || 70;
-    const h = Number(heightCm) || profile?.heightCm || 170;
     const a = Number(age) || profile?.age || 30;
-    const target = targetWeightKg.trim() !== '' ? Number(targetWeightKg) : undefined;
     const customNum = customDeltaInput.trim() !== '' ? Number(customDeltaInput) : NaN;
     const delta = !Number.isNaN(customNum) ? Math.round(customNum) : dailyCalorieDelta;
+
+    let w: number;
+    let h: number;
+    let target: number | undefined;
+    if (useUnits === 'metric') {
+      w = Number(weightInput) || profile?.weightKg || 70;
+      h = Number(heightCmInput) || profile?.heightCm || 170;
+      target = targetWeightInput.trim() !== '' ? Number(targetWeightInput) : undefined;
+    } else {
+      const wLb = Number(weightInput) || (profile ? kgToLb(profile.weightKg) : 154);
+      const [defFt, defIn] = profile ? cmToFtIn(profile.heightCm) : [5, 10];
+      const hFt = Number(heightFtInput) || defFt;
+      const hIn = Number(heightInInput) || defIn;
+      w = lbToKg(wLb);
+      h = ftInToCm(hFt, hIn);
+      target = targetWeightInput.trim() !== '' ? lbToKg(Number(targetWeightInput)) : undefined;
+    }
+
     return {
       weightKg: w,
       heightCm: h,
@@ -83,6 +152,7 @@ export default function GoalsScreen() {
       activityLevelId,
       targetWeightKg: target,
       dailyCalorieDelta: delta,
+      useUnits,
     };
   };
 
@@ -178,26 +248,69 @@ export default function GoalsScreen() {
         <Text style={styles.title}>Goals & profile</Text>
         <Text style={styles.subtitle}>Update your metrics and daily calorie goal.</Text>
 
+        <Text style={styles.sectionLabel}>Units</Text>
+        <View style={styles.row}>
+          <TouchableOpacity
+            style={[styles.option, useUnits === 'standard' && styles.optionSelected]}
+            onPress={() => handleUnitsChange('standard')}
+          >
+            <Text style={[styles.optionText, useUnits === 'standard' && styles.optionTextSelected]}>
+              Standard (lbs, ft/in)
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.option, useUnits === 'metric' && styles.optionSelected]}
+            onPress={() => handleUnitsChange('metric')}
+          >
+            <Text style={[styles.optionText, useUnits === 'metric' && styles.optionTextSelected]}>
+              Metric (kg, cm)
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.sectionLabel}>Your metrics</Text>
         <View style={styles.form}>
-          <Text style={styles.label}>Weight (kg)</Text>
+          <Text style={styles.label}>Weight ({useUnits === 'metric' ? 'kg' : 'lbs'})</Text>
           <TextInput
             style={styles.input}
-            value={weightKg}
-            onChangeText={setWeightKg}
-            placeholder="e.g. 70"
+            value={weightInput}
+            onChangeText={setWeightInput}
+            placeholder={useUnits === 'metric' ? 'e.g. 70' : 'e.g. 154'}
             placeholderTextColor={AppColors.textSecondary}
             keyboardType="decimal-pad"
           />
-          <Text style={styles.label}>Height (cm)</Text>
-          <TextInput
-            style={styles.input}
-            value={heightCm}
-            onChangeText={setHeightCm}
-            placeholder="e.g. 170"
-            placeholderTextColor={AppColors.textSecondary}
-            keyboardType="decimal-pad"
-          />
+          <Text style={styles.label}>Height ({useUnits === 'metric' ? 'cm' : 'ft and in'})</Text>
+          {useUnits === 'metric' ? (
+            <TextInput
+              style={styles.input}
+              value={heightCmInput}
+              onChangeText={setHeightCmInput}
+              placeholder="e.g. 170"
+              placeholderTextColor={AppColors.textSecondary}
+              keyboardType="decimal-pad"
+            />
+          ) : (
+            <View style={styles.heightRow}>
+              <TextInput
+                style={[styles.input, styles.heightInput]}
+                value={heightFtInput}
+                onChangeText={setHeightFtInput}
+                placeholder="ft"
+                placeholderTextColor={AppColors.textSecondary}
+                keyboardType="number-pad"
+              />
+              <Text style={styles.heightSeparator}>ft</Text>
+              <TextInput
+                style={[styles.input, styles.heightInput]}
+                value={heightInInput}
+                onChangeText={setHeightInInput}
+                placeholder="in"
+                placeholderTextColor={AppColors.textSecondary}
+                keyboardType="decimal-pad"
+              />
+              <Text style={styles.heightSeparator}>in</Text>
+            </View>
+          )}
           <Text style={styles.label}>Age</Text>
           <TextInput
             style={styles.input}
@@ -238,12 +351,12 @@ export default function GoalsScreen() {
 
         <Text style={styles.sectionLabel}>Your goal</Text>
         <View style={styles.form}>
-          <Text style={styles.label}>Target weight (kg, optional)</Text>
+          <Text style={styles.label}>Target weight ({useUnits === 'metric' ? 'kg' : 'lbs'}, optional)</Text>
           <TextInput
             style={styles.input}
-            value={targetWeightKg}
-            onChangeText={setTargetWeightKg}
-            placeholder="e.g. 65"
+            value={targetWeightInput}
+            onChangeText={setTargetWeightInput}
+            placeholder={useUnits === 'metric' ? 'e.g. 65' : 'e.g. 143'}
             placeholderTextColor={AppColors.textSecondary}
             keyboardType="decimal-pad"
           />
@@ -285,7 +398,8 @@ export default function GoalsScreen() {
             keyboardType="default"
           />
           <Text style={styles.hint}>
-            Negative = deficit (lose weight). Positive = surplus (gain weight). ~500 kcal/day ≈ 0.5 kg/week.
+            Negative = deficit (lose weight). Positive = surplus (gain weight). ~500 kcal/day ≈{' '}
+            {useUnits === 'metric' ? '0.5 kg' : '1 lb'}/week.
           </Text>
         </View>
 
@@ -329,6 +443,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   row: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  heightRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  heightInput: { flex: 1, marginBottom: 0 },
+  heightSeparator: { fontSize: 14, color: AppColors.textSecondary },
   option: {
     flex: 1,
     padding: 14,
