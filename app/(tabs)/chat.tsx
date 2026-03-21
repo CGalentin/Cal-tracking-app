@@ -1,12 +1,16 @@
+import { useNavigation } from '@react-navigation/native';
 import { Audio } from 'expo-av';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -15,6 +19,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+import { ChatHelpModal } from '@/components/ChatHelpModal';
 import {
   getOrCreateConversation,
   sendMessage,
@@ -22,7 +27,10 @@ import {
   transcribeAudio,
   uploadImageAndSendMessage,
 } from '@/components/chatService';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { EXAMPLE_MEAL_PROMPTS } from '@/constants/examplePrompts';
 import { AppColors } from '@/constants/theme';
+import { getUserFriendlyMessage } from '@/utils/errorMessages';
 
 type Macros = { protein: number; carbs: number; fat: number };
 
@@ -41,7 +49,9 @@ type Message = {
 };
 
 export default function ChatScreen() {
+  const navigation = useNavigation();
   const { width: screenWidth } = useWindowDimensions();
+  const [helpVisible, setHelpVisible] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -51,9 +61,27 @@ export default function ChatScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [processingCorrection, setProcessingCorrection] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [lastUploadError, setLastUploadError] = useState<string | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const sessionStartRef = useRef<number>(Date.now());
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={() => setHelpVisible(true)}
+          style={{ marginRight: 16, padding: 4 }}
+          accessibilityLabel="Chat help">
+          <IconSymbol name="questionmark.circle" size={26} color={AppColors.primary} />
+        </Pressable>
+      ),
+    });
+  }, [navigation]);
 
   // Initialize conversation and subscribe to messages (history stored in Firestore; only show this session)
   useEffect(() => {
@@ -61,6 +89,7 @@ export default function ChatScreen() {
 
     const initChat = async () => {
       try {
+        setInitError(null);
         sessionStartRef.current = Date.now();
         const convId = await getOrCreateConversation();
         setConversationId(convId);
@@ -75,17 +104,14 @@ export default function ChatScreen() {
           });
           setMessages(sessionMessages);
           setLoading(false);
-          // Clear "Processing correction…" when assistant replies
           if (sessionMessages.length > 0 && sessionMessages[sessionMessages.length - 1].role === 'assistant') {
             setProcessingCorrection(false);
           }
-
-          setTimeout(() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
-          }, 100);
+          setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
         });
       } catch (error) {
         console.error('Error initializing chat:', error);
+        setInitError(getUserFriendlyMessage(error, 'generic'));
         setLoading(false);
       }
     };
@@ -95,15 +121,15 @@ export default function ChatScreen() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [retryKey]);
 
   const handleSend = async () => {
-    if (!inputText.trim() || !conversationId) return;
+    if (!inputText.trim() || !conversationId || sendingMessage) return;
 
     const textToSend = inputText.trim();
     setInputText('');
+    setSendingMessage(true);
 
-    // PR 14: If last message was "No", this is a correction — show processing state
     const lastMsg = messages[messages.length - 1];
     if (lastMsg?.role === 'user' && lastMsg?.text === 'No') {
       setProcessingCorrection(true);
@@ -114,17 +140,30 @@ export default function ChatScreen() {
     } catch (error) {
       setProcessingCorrection(false);
       console.error('Error sending message:', error);
-      Alert.alert('Error', 'Failed to send message.');
+      const msg = getUserFriendlyMessage(error, 'message');
+      Alert.alert('Could not send', msg, [
+        { text: 'OK' },
+        { text: 'Retry', onPress: () => setInputText(textToSend) },
+      ]);
+    } finally {
+      setSendingMessage(false);
     }
   };
 
   const handleConfirmation = async (response: 'Yes' | 'No') => {
-    if (!conversationId) return;
+    if (!conversationId || confirming) return;
+    setConfirming(true);
     try {
       await sendMessage(conversationId, 'user', response);
     } catch (error) {
       console.error('Error sending confirmation:', error);
-      Alert.alert('Error', 'Failed to send response.');
+      const msg = getUserFriendlyMessage(error, 'message');
+      Alert.alert('Could not send', msg, [
+        { text: 'OK' },
+        { text: 'Retry', onPress: () => handleConfirmation(response) },
+      ]);
+    } finally {
+      setConfirming(false);
     }
   };
 
@@ -155,14 +194,20 @@ export default function ChatScreen() {
   };
 
   const handleSendImage = async () => {
-    if (!selectedImageUri || !conversationId) return;
+    if (!selectedImageUri || !conversationId || uploadingImage) return;
     setUploadingImage(true);
+    setLastUploadError(null);
     try {
       await uploadImageAndSendMessage(conversationId, 'user', selectedImageUri);
       setSelectedImageUri(null);
     } catch (error) {
       console.error('Error uploading image:', error);
-      Alert.alert('Error', 'Failed to upload image.');
+      const msg = getUserFriendlyMessage(error, 'upload');
+      setLastUploadError(msg);
+      Alert.alert('Upload failed', msg, [
+        { text: 'Cancel', onPress: () => setSelectedImageUri(null) },
+        { text: 'Retry', onPress: () => handleSendImage() },
+      ]);
     } finally {
       setUploadingImage(false);
     }
@@ -227,17 +272,16 @@ export default function ChatScreen() {
       } else {
         Alert.alert(
           'No speech detected',
-          'Could not transcribe the recording. Please try again or type your message.'
+          'Could not hear any words. Please try again or type your message.',
+          [{ text: 'OK' }]
         );
       }
     } catch (error) {
       setTranscribing(false);
       setProcessingCorrection(false);
       console.error('Error transcribing:', error);
-      Alert.alert(
-        'Transcription failed',
-        'Could not transcribe the recording. Make sure the Cloud Function is deployed and Google Speech-to-Text API is enabled. For now, please type your message.'
-      );
+      const msg = getUserFriendlyMessage(error, 'transcription');
+      Alert.alert('Transcription failed', msg, [{ text: 'OK' }]);
     }
   };
 
@@ -334,17 +378,19 @@ export default function ChatScreen() {
             <View style={styles.confirmationButtons}>
               <TouchableOpacity
                 onPress={() => handleConfirmation('Yes')}
-                style={styles.confirmButton}
+                disabled={confirming}
+                style={[styles.confirmButton, confirming && styles.buttonDisabled]}
                 activeOpacity={0.8}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Text style={styles.confirmButtonText}>Yes</Text>
+                <Text style={styles.confirmButtonText}>{confirming ? '…' : 'Yes'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleConfirmation('No')}
-                style={styles.declineButton}
+                disabled={confirming}
+                style={[styles.declineButton, confirming && styles.buttonDisabled]}
                 activeOpacity={0.8}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Text style={styles.declineButtonText}>No</Text>
+                <Text style={styles.declineButtonText}>{confirming ? '…' : 'No'}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -356,7 +402,22 @@ export default function ChatScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading chat...</Text>
+        <ActivityIndicator size="large" color={AppColors.primary} />
+        <Text style={[styles.loadingText, { marginTop: 16 }]}>Loading chat...</Text>
+      </View>
+    );
+  }
+
+  if (initError) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={[styles.loadingText, { textAlign: 'center', marginBottom: 16 }]}>{initError}</Text>
+        <TouchableOpacity
+          style={[styles.sendButton, { marginTop: 8 }]}
+          onPress={() => { setLoading(true); setRetryKey((k) => k + 1); }}
+        >
+          <Text style={styles.sendButtonText}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -365,6 +426,7 @@ export default function ChatScreen() {
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}>
+      <ChatHelpModal visible={helpVisible} onClose={() => setHelpVisible(false)} />
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -393,20 +455,27 @@ export default function ChatScreen() {
               contentFit="cover"
             />
             <View style={styles.photoPreviewActions}>
-              <Text style={styles.photoPreviewLabel}>Photo selected</Text>
+              <Text style={styles.photoPreviewLabel}>
+                {lastUploadError ? 'Upload failed – tap Retry' : 'Photo selected'}
+              </Text>
               <View style={styles.photoPreviewButtons}>
                 <TouchableOpacity
-                  onPress={() => setSelectedImageUri(null)}
-                  style={styles.cancelButton}>
+                  onPress={() => { setSelectedImageUri(null); setLastUploadError(null); }}
+                  style={styles.cancelButton}
+                  disabled={uploadingImage}>
                   <Text style={styles.cancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSendImage}
                   disabled={uploadingImage}
-                  style={styles.sendPhotoButton}>
-                  <Text style={styles.sendPhotoButtonText}>
-                    {uploadingImage ? 'Uploading...' : 'Send photo'}
-                  </Text>
+                  style={[styles.sendPhotoButton, uploadingImage && styles.buttonDisabled]}>
+                  {uploadingImage ? (
+                    <ActivityIndicator size="small" color="#ffffff" style={{ paddingVertical: 4 }} />
+                  ) : (
+                    <Text style={styles.sendPhotoButtonText}>
+                      {lastUploadError ? 'Retry' : 'Send photo'}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
@@ -414,17 +483,39 @@ export default function ChatScreen() {
         </View>
       ) : null}
 
+      {messages.length === 0 && !selectedImageUri ? (
+        <View style={styles.promptsSection}>
+          <Text style={styles.promptsLabel}>Try an example</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.promptsRow}>
+            {EXAMPLE_MEAL_PROMPTS.map((prompt) => (
+              <TouchableOpacity
+                key={prompt}
+                style={styles.promptChip}
+                onPress={() => setInputText(prompt)}
+                activeOpacity={0.85}>
+                <Text style={styles.promptChipText} numberOfLines={2}>
+                  {prompt}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+
       <View style={styles.inputBarContainer}>
         <View style={styles.inputRow}>
           <TouchableOpacity
             onPress={handlePickImage}
-            disabled={isRecording || transcribing || processingCorrection}
+            disabled={isRecording || transcribing || processingCorrection || sendingMessage || confirming}
             style={styles.iconButton}>
             <Text style={styles.iconText}>📷</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleMicPress}
-            disabled={!!selectedImageUri || transcribing || processingCorrection}
+            disabled={!!selectedImageUri || transcribing || processingCorrection || sendingMessage || confirming}
             style={[styles.iconButton, isRecording && styles.iconButtonRecording]}>
             <Text style={styles.iconText}>{isRecording ? '⏹' : '🎤'}</Text>
           </TouchableOpacity>
@@ -446,15 +537,22 @@ export default function ChatScreen() {
             placeholderTextColor="#9ca3af"
             value={inputText}
             onChangeText={setInputText}
-            editable={!isRecording && !transcribing && !processingCorrection}
+            editable={!isRecording && !transcribing && !processingCorrection && !sendingMessage}
             multiline
             maxLength={500}
           />
           <TouchableOpacity
             onPress={handleSend}
-            disabled={!inputText.trim() || processingCorrection}
-            style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}>
-            <Text style={styles.sendButtonText}>Send</Text>
+            disabled={!inputText.trim() || processingCorrection || sendingMessage}
+            style={[
+              styles.sendButton,
+              (!inputText.trim() || sendingMessage) && styles.sendButtonDisabled,
+            ]}>
+            {sendingMessage ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <Text style={styles.sendButtonText}>Send</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -622,6 +720,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  promptsSection: {
+    borderTopWidth: 1,
+    borderTopColor: AppColors.cardBorder,
+    backgroundColor: AppColors.backgroundAlt,
+    paddingVertical: 12,
+    paddingLeft: 16,
+  },
+  promptsLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: AppColors.textSecondary,
+    marginBottom: 10,
+  },
+  promptsRow: {
+    flexDirection: 'row',
+    paddingRight: 16,
+    alignItems: 'stretch',
+  },
+  promptChip: {
+    maxWidth: 220,
+    marginRight: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: AppColors.card,
+    borderWidth: 1,
+    borderColor: AppColors.cardBorder,
+  },
+  promptChipText: {
+    fontSize: 14,
+    color: AppColors.text,
+    lineHeight: 20,
+  },
   inputBarContainer: {
     borderTopWidth: 1,
     borderTopColor: AppColors.cardBorder,
@@ -713,6 +844,9 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: '#d1d5db',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   sendButtonText: {
     color: '#ffffff',

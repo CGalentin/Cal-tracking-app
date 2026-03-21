@@ -19,6 +19,8 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'fork.knife': 'restaurant',
   'flag.fill': 'flag',
+  'gearshape.fill': 'settings',
+  'questionmark.circle': 'help-outline',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
 } as IconMapping;

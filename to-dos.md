@@ -257,41 +257,41 @@
 ## PR 18 — Error Handling & Beginner Safety
 
 ### Client
-- [ ] Add error boundaries for crash recovery
-- [ ] Show user-friendly error messages (network, auth, Firebase)
-- [ ] Handle image upload failures gracefully
-- [ ] Handle voice recording failures gracefully
-- [ ] Add retry buttons for failed operations
+- [x] Add error boundaries for crash recovery
+- [x] Show user-friendly error messages (network, auth, Firebase)
+- [x] Handle image upload failures gracefully
+- [x] Handle voice recording failures gracefully
+- [x] Add retry buttons for failed operations
 
 ### Backend
-- [ ] Add try/catch to all Cloud Functions
-- [ ] Log errors to Firebase console
-- [ ] Return meaningful error messages to client
+- [x] Add try/catch to all Cloud Functions (onImageMessageCreated duplicate/malformed line fixed in `functions/src/index.ts`)
+- [x] Log errors to Firebase console
+- [x] Return meaningful error messages to client
 
 ### UX
-- [ ] Show loading spinners during async operations
-- [ ] Disable buttons while processing
-- [ ] Prevent double-tap/duplicate submissions
+- [x] Show loading spinners during async operations
+- [x] Disable buttons while processing
+- [x] Prevent double-tap/duplicate submissions
 
 ---
 
 ## PR 19 — Onboarding & Help
 
 ### First-Time User Experience
-- [ ] Create onboarding flow (3-4 screens explaining app features)
-- [ ] Show onboarding only on first launch (AsyncStorage flag)
-- [ ] Add "Skip" button to onboarding
+- [x] Create onboarding flow (3-4 screens explaining app features) — `app/feature-tour.tsx` (separate from calorie onboarding)
+- [x] Show onboarding only on first launch (AsyncStorage flag) — `@react-native-async-storage/async-storage` + `components/featureTourStorage.ts`
+- [x] Add "Skip" button to onboarding
 
 ### Help & Guidance
-- [ ] Add help/info button to chat screen
-- [ ] Create help modal with tips (how to log meals, corrections, voice input)
-- [ ] Add example prompts or suggestions for new users
+- [x] Add help/info button to chat screen — header `?` opens modal
+- [x] Create help modal with tips (how to log meals, corrections, voice input) — `components/ChatHelpModal.tsx`
+- [x] Add example prompts or suggestions for new users — horizontal chips when chat is empty
 
 ### Settings
-- [ ] Create settings screen
-- [ ] Add option to reset onboarding
-- [ ] Add logout button in settings
-- [ ] Display user info (email, display name)
+- [x] Create settings screen — `app/(tabs)/settings.tsx` tab
+- [x] Add option to reset onboarding — reset tour for next launch + “Show welcome tour now”
+- [x] Add logout button in settings — header “Log out” removed; use Settings tab
+- [x] Display user info (email, display name)
 
 ---
 
@@ -304,14 +304,6 @@
 
 ---
 
-## Beginner Tip (Important)
-
-If something feels confusing:
-- Skip it
-- Stub it
-- Move on
-
-Momentum matters more than perfection.
 
 
 

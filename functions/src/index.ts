@@ -343,91 +343,99 @@ export const onImageMessageCreated = onDocumentCreated(
     }
 
     const { conversationId } = event.params;
-    logger.info("Image message created", { conversationId, messageId: event.params.messageId, imageUrl });
-
     const messagesRef = db.collection("conversations").doc(conversationId).collection("messages");
 
-    let resized: { buffer: Buffer; width: number; height: number } | null = null;
-    try {
-      resized = await downloadAndResizeImage(imageUrl);
-    } catch (err) {
-      logger.error("downloadAndResizeImage failed", err);
-    }
+    const writeErrorReply = async (msg: string) => {
+      try {
+        await messagesRef.add({
+          role: "assistant",
+          type: "text",
+          text: msg,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } catch (writeErr) {
+        logger.error("onImageMessageCreated: failed to write error reply", writeErr);
+      }
+    };
 
-    if (!resized) {
-      await messagesRef.add({
+    try {
+      logger.info("Image message created", { conversationId, messageId: event.params.messageId, imageUrl });
+
+      let resized: { buffer: Buffer; width: number; height: number } | null = null;
+      try {
+        resized = await downloadAndResizeImage(imageUrl);
+      } catch (err) {
+        logger.error("downloadAndResizeImage failed", err);
+      }
+
+      if (!resized) {
+        await writeErrorReply("I couldn't process that image. Please try another photo.");
+        return;
+      }
+
+      const apiKey = geminiApiKeySecret.value();
+      let visionResult: { text: string } | null = null;
+      try {
+        visionResult = await sendImageToVisionModel(resized.buffer, apiKey);
+      } catch (err) {
+        logger.error("sendImageToVisionModel failed", err);
+      }
+
+      if (!visionResult) {
+        await writeErrorReply("I couldn't analyze the image right now. Please try again.");
+        return;
+      }
+
+      const description = visionResult.text;
+      const { foods: foodItems, estimatedCalories } = parseVisionResponse(description);
+      const confidenceScore = 0.85;
+
+      const messageParts: string[] = [];
+      if (foodItems.length > 0) {
+        messageParts.push(`I see: ${foodItems.join(", ")}.`);
+        if (estimatedCalories != null) {
+          messageParts.push(`Estimated: ${formatNutritionSummary(estimatedCalories)}`);
+        }
+      } else {
+        messageParts.push(description);
+        if (estimatedCalories != null) {
+          messageParts.push(`Estimated: ${formatNutritionSummary(estimatedCalories)}`);
+        }
+      }
+
+      logger.info("Vision result", {
+        conversationId,
+        description: description.slice(0, 100),
+        foodCount: foodItems.length,
+        estimatedCalories: estimatedCalories ?? undefined,
+      });
+
+      const visionMsgRef = await messagesRef.add({
         role: "assistant",
         type: "text",
-        text: "I couldn’t process that image. Please try another photo.",
+        text: messageParts.join(" "),
+        foodDescription: description,
+        foodItems,
+        confidenceScore,
+        ...(estimatedCalories != null && { estimatedCalories }),
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
       });
-      return;
-    }
 
-    const apiKey = geminiApiKeySecret.value();
-    let visionResult: { text: string } | null = null;
-    try {
-      visionResult = await sendImageToVisionModel(resized.buffer, apiKey);
-    } catch (err) {
-      logger.error("sendImageToVisionModel failed", err);
-    }
-
-    if (!visionResult) {
+      const imageMessageId = event.params.messageId;
       await messagesRef.add({
         role: "assistant",
-        type: "text",
-        text: "I couldn’t analyze the image right now. Please try again.",
+        type: "confirmation",
+        text: "Does this description match your meal?",
+        linkedVisionMessageId: visionMsgRef.id,
+        linkedImageMessageId: imageMessageId,
+        foodItems,
+        ...(estimatedCalories != null && { estimatedCalories }),
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
       });
-      return;
+    } catch (err) {
+      logger.error("onImageMessageCreated failed", err);
+      await writeErrorReply("Something went wrong while analyzing your photo. Please try again.");
     }
-
-    const description = visionResult.text;
-    const { foods: foodItems, estimatedCalories } = parseVisionResponse(description);
-    const confidenceScore = 0.85;
-
-    const messageParts: string[] = [];
-    if (foodItems.length > 0) {
-      messageParts.push(`I see: ${foodItems.join(", ")}.`);
-      if (estimatedCalories != null) {
-        messageParts.push(`Estimated: ${formatNutritionSummary(estimatedCalories)}`);
-      }
-    } else {
-      messageParts.push(description);
-      if (estimatedCalories != null) {
-        messageParts.push(`Estimated: ${formatNutritionSummary(estimatedCalories)}`);
-      }
-    }
-
-    logger.info("Vision result", {
-      conversationId,
-      description: description.slice(0, 100),
-      foodCount: foodItems.length,
-      estimatedCalories: estimatedCalories ?? undefined,
-    });
-
-    const visionMsgRef = await messagesRef.add({
-      role: "assistant",
-      type: "text",
-      text: messageParts.join(" "),
-      foodDescription: description,
-      foodItems,
-      confidenceScore,
-      ...(estimatedCalories != null && { estimatedCalories }),
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    const imageMessageId = event.params.messageId;
-    await messagesRef.add({
-      role: "assistant",
-      type: "confirmation",
-      text: "Does this description match your meal?",
-      linkedVisionMessageId: visionMsgRef.id,
-      linkedImageMessageId: imageMessageId,
-      foodItems,
-      ...(estimatedCalories != null && { estimatedCalories }),
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
   }
 );
 
@@ -441,6 +449,7 @@ export const onTextMealMessageCreated = onDocumentCreated(
     secrets: [geminiApiKeySecret],
   },
   async (event) => {
+    try {
     const snapshot = event.data;
     if (!snapshot?.exists) return;
 
@@ -619,6 +628,9 @@ export const onTextMealMessageCreated = onDocumentCreated(
       ...(estimatedCalories != null && { estimatedCalories }),
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
+    } catch (err) {
+      logger.error("onTextMealMessageCreated failed", err);
+    }
   }
 );
 
@@ -645,6 +657,7 @@ function formatNutritionSummary(calories: number): string {
 export const onMessageCreated = onDocumentCreated(
   { document: "conversations/{conversationId}/messages/{messageId}" },
   async (event) => {
+    try {
     const snapshot = event.data;
     if (!snapshot?.exists) return;
 
@@ -773,5 +786,8 @@ export const onMessageCreated = onDocumentCreated(
     });
 
     logger.info("Meal logged", { conversationId, mealId: mealRef.id, estimatedCalories: calories });
+    } catch (err) {
+      logger.error("onMessageCreated failed", err);
+    }
   }
 );

@@ -403,6 +403,58 @@ npx firebase deploy --only firestore
   - Meals within each section show time instead of full date.
   - Shows "No meals logged today" when today has no meals.
 
+### Session: Calorie Target, Onboarding, Goals, Home UI & Calories Burned (Today)
+
+- **to-dos.md:** Moved the "To-Do List: Calorie Target Calculation" block so it appears before PR 18 (not before PR 19). Phase 1–3 items checked off where implemented.
+
+- **Phase 1 — UserProfile & activity levels:**
+  - Created `types/userProfile.ts`: `UserProfile`, `Gender`, `UserProfileInput`.
+  - Created `constants/activityLevels.ts`: `ACTIVITY_LEVEL_MULTIPLIERS`, `ACTIVITY_LEVEL_LABELS`, `ActivityLevelId`.
+
+- **Phase 2 — BMR & daily target:**
+  - Created `utils/calorieTarget.ts`: `calculateBMR()` (Mifflin–St Jeor), `calculateTDEE()`, `calculateDailyTarget()`, `getWeightProgress()`, `isCalorieTargetBelowSafe()`, `MIN_DAILY_CALORIES_FEMALE`/`MALE`.
+
+- **Phase 3 — Onboarding, safety, dashboard:**
+  - **Profile service:** `components/userProfileService.ts` — `getProfile`, `subscribeToProfile`, `setProfile`, `profileNeedsGoals`; Firestore `userProfiles/{userId}`; payloads sanitized with `withoutUndefined`.
+  - **Firestore:** `firestore.rules` — read/write for `userProfiles/{userId}` (user can only access own profile).
+  - **Onboarding:** `app/(tabs)/onboarding.tsx` (hidden from tab bar via `href: null`). Three steps: metrics, activity level, goal; safety alert if target &lt; 1200/1500; Finish saves profile and navigates to home. Root layout sends new users (no profile) to `(tabs)/onboarding`.
+  - **Goals screen:** `app/(tabs)/goals.tsx`; added Goals tab (flag icon). For users with profile but no goals (`dailyCalorieDelta === undefined`), root layout sends to Goals; "Skip for now" sets `dailyCalorieDelta: 0` and navigates to home.
+  - **Root layout:** `app/_layout.tsx` — after login, redirect by profile state (no profile → onboarding; profile but no goals → goals; else home). **Native (Expo Go):** paths without leading slash (`login`, `(tabs)`, `(tabs)/onboarding`, `(tabs)/goals`). **Web:** leading slash where needed (`/(tabs)` etc.).
+
+- **Navigation & routing fixes:**
+  - Finish button: save worked but screen didn’t change — fixed by moving onboarding into `(tabs)` and improving redirect logic; web "Unmatched route" fixed with `/(tabs)` instead of `/(tabs)/index`.
+  - Expo Go "Unmatched route" on login and after login — fixed by using paths **without leading slash** on native: `login`, `(tabs)`, `(tabs)/onboarding`, `(tabs)/goals`.
+  - `app/index.tsx`: redirect to `login` (no leading slash). All `router.replace`/`router.navigate` to tabs use native-friendly paths on mobile.
+
+- **Login screen:** `components/LoginScreen.js` — ImageBackground with `landing-screen-background.jpg`, overlay, title "Welcome to the CalApp", Login and Sign up buttons; tapping one shows the form; Back returns to welcome.
+
+- **Home screen:** `app/(tabs)/index.tsx`:
+  - **Web:** `CalorieRing` (View-based circular progress) for remaining, goal, eaten.
+  - **Mobile:** `CalorieBar` (horizontal bar) — ring was unreliable on native.
+  - **Calories Remaining** card: Target − Eaten + Burned. Safety banner if target below min.
+  - **Calories Burned:** Editable number input; value kept in **in-memory state only** (no persistence across restarts). Used in remaining calculation.
+
+- **AsyncStorage error fix:** "Unable to resolve module @react-native-async-storage/async-storage" — package was not installed. Removed AsyncStorage usage; calories burned is in-memory only so the app runs without the package. Optional later: install `@react-native-async-storage/async-storage` and persist by date (e.g. `caloriesBurned_YYYY-MM-DD`) if desired.
+
+- **Key files:** `to-dos.md`, `types/userProfile.ts`, `constants/activityLevels.ts`, `constants/theme.ts`, `firestore.rules`, `utils/calorieTarget.ts`, `components/userProfileService.ts`, `app/_layout.tsx`, `app/index.tsx`, `app/login.tsx`, `app/(tabs)/_layout.tsx`, `app/(tabs)/index.tsx`, `app/(tabs)/onboarding.tsx`, `app/(tabs)/goals.tsx`, `components/LoginScreen.js`, `components/ui/icon-symbol.tsx` (added `flag.fill` for Goals).
+
+### Session: PR 18 — Error Handling & onImageMessageCreated Fix (In Progress)
+
+- **Context:** Project path had apostrophe (`Chris's Home`), causing PowerShell/terminal failures when running scripts. User is moving project to a new location without the apostrophe.
+- **PR 18 — Client-side:** Error boundaries, user-facing error messages, image/voice failure handling, retries, loading spinners, double-tap prevention — done.
+- **PR 18 — Backend:** try/catch added to `transcribeAudio`, `onTextMealMessageCreated`, `onMessageCreated`. `onImageMessageCreated` still has a bug.
+- **onImageMessageCreated bug (functions/src/index.ts, ~lines 413–470):**
+  - **Partially fixed:** visionMsgRef content was changed from wrong error text to correct fields (`messageParts.join(" ")`, `foodDescription`, `foodItems`, etc.).
+  - **Line 420 syntax error:** Malformed line — `}),'timestamp:` is merged with the previous line. Needs to be split so `timestamp:` starts on the next line.
+  - **Duplicate block:** Wrong `await messagesRef.add` (error message) + `return;` + orphan `}` + duplicate `description`, `messageParts`, `logger.info`, `visionMsgRef`, `imageMessageId` — needs removal. Correct flow: visionMsgRef → imageMessageId → confirmation add.
+- **Fix script ready:** `fix-onImageMessageCreated.js` (run via `npm run fix-functions`) fixes both the malformed line and removes the duplicate block. Script uses regex to handle curly apostrophe (U+2019).
+- **Next steps after project move:**
+  1. Run `npm run fix-functions` from project root.
+  2. Run `cd functions && npm run build` to verify.
+  3. Deploy: `npx firebase deploy --only functions`.
+  4. Check off PR 18 backend in `to-dos.md`.
+- **Reference:** `FUNCTIONS_FIX.md` has manual fix instructions if the script fails.
+
 ### Remaining / Future Tasks
 
 - Follow `to-dos.md` and `PRD.md` to build out:
@@ -414,5 +466,14 @@ npx firebase deploy --only firestore
   - ~~Update meal after corrections (PR 15).~~ **Done.**
   - ~~Manual text corrections (PR 16).~~ **Done.**
   - ~~Meal history & daily summary (PR 17).~~ **Done.**
-  - Error handling (PR 18).
-  - Onboarding & help (PR 19).
+  - Calorie target calculation (Phase 1–3): UserProfile, BMR, onboarding, Goals, home dashboard — **Done.**
+  - ~~Error handling (PR 18).~~ **Done** (client + backend; `onImageMessageCreated` fixed).
+  - ~~Onboarding & help (PR 19).~~ **Done:** feature tour (`app/feature-tour.tsx` + AsyncStorage), Chat help modal + example chips, Settings tab (user info, logout, reset/show tour).
+
+### Session: PR 19 — Onboarding & Help
+
+- **Feature tour (first launch):** `app/feature-tour.tsx` — 4 slides (chat, photo/voice, confirm, home/meals). `Skip` and `Next` / `Get started`. Persists with AsyncStorage (`@calapp_has_seen_feature_tour_v1`). Shown after login when profile + goals are complete, and on cold start if flag not set. Stack route `feature-tour` in `app/_layout.tsx`.
+- **Storage:** `components/featureTourStorage.ts`, `constants/storageKeys.ts`. Dependency: `@react-native-async-storage/async-storage` (run `npm install`).
+- **Settings tab:** `app/(tabs)/settings.tsx` — email, display name; reset welcome tour (next launch); show tour now; **Log out**. Global header “Log out” removed from tabs.
+- **Chat:** Header `?` → `components/ChatHelpModal.tsx`. Empty chat shows “Try an example” horizontal chips (`constants/examplePrompts.ts`).
+- **Icons:** `gearshape.fill` → settings, `questionmark.circle` → help-outline in `icon-symbol.tsx`.

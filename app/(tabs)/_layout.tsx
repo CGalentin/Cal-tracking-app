@@ -1,20 +1,11 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Pressable, Text } from 'react-native';
 
-import { logOut } from '@/components/authService';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { AppColors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
-  const handleLogout = async () => {
-    await logOut();
-  };
-
   return (
     <Tabs
       screenOptions={{
@@ -25,11 +16,6 @@ export default function TabLayout() {
         headerStyle: { backgroundColor: AppColors.background },
         headerTintColor: AppColors.text,
         headerTitleStyle: { fontWeight: '600', fontSize: 18, color: AppColors.text },
-        headerRight: () => (
-          <Pressable onPress={handleLogout} style={{ marginRight: 16 }}>
-            <Text style={{ color: AppColors.primary, fontWeight: '600' }}>Log out</Text>
-          </Pressable>
-        ),
         tabBarButton: HapticTab,
       }}>
       <Tabs.Screen
@@ -65,6 +51,13 @@ export default function TabLayout() {
         options={{
           title: 'Goals',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="flag.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
         }}
       />
       <Tabs.Screen

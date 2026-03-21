@@ -1,5 +1,6 @@
 // LoginScreen.js
 import { AppColors } from '@/constants/theme';
+import { getUserFriendlyMessage } from '@/utils/errorMessages';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -22,7 +23,8 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
-  const [screen, setScreen] = useState('welcome'); // 'welcome' | 'login' | 'signup'
+  const [screen, setScreen] = useState('welcome');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleAuth = async () => {
     if (isSignUp && !displayName) {
@@ -35,14 +37,22 @@ export default function LoginScreen() {
       return;
     }
 
-    const result = isSignUp
-      ? await signUp(email, password, displayName)
-      : await signIn(email, password);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    if (result.success) {
-      Alert.alert('Success', isSignUp ? 'Account created!' : 'Logged in!');
-    } else {
-      Alert.alert('Error', result.error);
+    try {
+      const result = isSignUp
+        ? await signUp(email, password, displayName)
+        : await signIn(email, password);
+
+      if (result.success) {
+        Alert.alert('Success', isSignUp ? 'Account created!' : 'Logged in!');
+      } else {
+        const message = getUserFriendlyMessage(result.error, 'auth');
+        Alert.alert('Error', message);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -136,8 +146,14 @@ export default function LoginScreen() {
                 />
               </View>
 
-              <TouchableOpacity style={styles.primaryButton} onPress={handleAuth} activeOpacity={0.85}>
-                <Text style={styles.primaryButtonText}>{isSignUp ? 'Sign up' : 'Login'}</Text>
+              <TouchableOpacity
+                style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
+                onPress={handleAuth}
+                disabled={isSubmitting}
+                activeOpacity={0.85}>
+                <Text style={styles.primaryButtonText}>
+                  {isSubmitting ? 'Please wait...' : isSignUp ? 'Sign up' : 'Login'}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.backButton} onPress={backToWelcome}>
@@ -194,6 +210,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginBottom: 12,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   primaryButtonText: {
     fontSize: 17,

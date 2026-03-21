@@ -5,6 +5,8 @@ import React, { useEffect, useState } from 'react';
 import { Platform, Text, View } from 'react-native';
 import 'react-native-reanimated';
 
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { getHasSeenFeatureTour } from '@/components/featureTourStorage';
 import { getProfile, profileNeedsGoals, subscribeToProfile } from '@/components/userProfileService';
 import type { UserProfile } from '@/types/userProfile';
 import { AppColors } from '@/constants/theme';
@@ -53,7 +55,7 @@ export default function RootLayout() {
     };
   }, [user]);
 
-  // Redirect based on auth state and profile
+  // Redirect based on auth state and profile (from login → onboarding / goals / feature tour / home)
   useEffect(() => {
     if (loading) return;
 
@@ -62,22 +64,59 @@ export default function RootLayout() {
 
     if (!isLoggedIn && !inAuthGroup) {
       router.replace('login');
-    } else if (isLoggedIn && inAuthGroup) {
-      if (profile === undefined) return;
-      // Expo Go on native often needs paths without leading slash to avoid "Unmatched route"
-      const isNative = Platform.OS !== 'web';
-      const homePath = isNative ? '(tabs)' : '/(tabs)';
-      const onboardingPath = isNative ? '(tabs)/onboarding' : '/(tabs)/onboarding';
-      const goalsPath = isNative ? '(tabs)/goals' : '/(tabs)/goals';
-      if (!profile) {
-        router.replace(onboardingPath);
-      } else if (profileNeedsGoals(profile)) {
-        router.replace(goalsPath);
-      } else {
-        router.replace(homePath);
-      }
+      return undefined;
     }
+
+    if (!isLoggedIn || !inAuthGroup) return undefined;
+    if (profile === undefined) return undefined;
+
+    const isNative = Platform.OS !== 'web';
+    const homePath = isNative ? '(tabs)' : '/(tabs)';
+    const onboardingPath = isNative ? '(tabs)/onboarding' : '/(tabs)/onboarding';
+    const goalsPath = isNative ? '(tabs)/goals' : '/(tabs)/goals';
+    const featureTourPath = isNative ? 'feature-tour' : '/feature-tour';
+
+    let cancelled = false;
+    void (async () => {
+      if (!profile) {
+        if (!cancelled) router.replace(onboardingPath);
+        return;
+      }
+      if (profileNeedsGoals(profile)) {
+        if (!cancelled) router.replace(goalsPath);
+        return;
+      }
+      const seen = await getHasSeenFeatureTour();
+      if (cancelled) return;
+      if (seen) router.replace(homePath);
+      else router.replace(featureTourPath);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, loading, profile, segments, router]);
+
+  // Returning users on tabs: show feature tour once if they have not seen it (PR 19)
+  useEffect(() => {
+    if (loading || !user || profile === undefined || profile === null || profileNeedsGoals(profile)) {
+      return undefined;
+    }
+    if (!segments.length) return undefined;
+    const seg0 = segments[0];
+    if (seg0 === 'login' || seg0 === 'feature-tour') return undefined;
+
+    let cancelled = false;
+    void getHasSeenFeatureTour().then((seen) => {
+      if (cancelled || seen) return;
+      const featureTourPath = Platform.OS !== 'web' ? 'feature-tour' : '/feature-tour';
+      router.replace(featureTourPath);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, user, profile, segments, router]);
 
   // While checking auth, show a simple loading screen
   if (loading) {
@@ -99,13 +138,16 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="light" />
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="feature-tour" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        </Stack>
+        <StatusBar style="light" />
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
