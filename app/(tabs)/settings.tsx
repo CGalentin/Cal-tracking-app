@@ -8,12 +8,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import type { User } from 'firebase/auth';
 import { onAuthStateChanged } from 'firebase/auth';
 
-import { logOut } from '@/components/authService';
+import { logOut, updateDisplayName } from '@/components/authService';
 import { clearFeatureTourFlag } from '@/components/featureTourStorage';
 import { auth } from '@/components/firebaseConfig';
 import { AppColors } from '@/constants/theme';
@@ -23,6 +24,9 @@ export default function SettingsScreen() {
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [loggingOut, setLoggingOut] = useState(false);
   const [resettingTour, setResettingTour] = useState(false);
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [updatingDisplayName, setUpdatingDisplayName] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUser);
@@ -57,6 +61,31 @@ export default function SettingsScreen() {
     router.replace(Platform.OS !== 'web' ? 'feature-tour' : '/feature-tour');
   }, [router]);
 
+  const startEditingDisplayName = useCallback(() => {
+    setDisplayNameDraft(user?.displayName?.trim() ?? '');
+    setEditingDisplayName(true);
+  }, [user?.displayName]);
+
+  const cancelEditingDisplayName = useCallback(() => {
+    setEditingDisplayName(false);
+    setDisplayNameDraft('');
+  }, []);
+
+  const saveDisplayName = useCallback(async () => {
+    setUpdatingDisplayName(true);
+    try {
+      const result = await updateDisplayName(displayNameDraft);
+      if (result.success) {
+        setEditingDisplayName(false);
+        setDisplayNameDraft('');
+      } else {
+        Alert.alert('Could not update', result.error?.message ?? 'Please try again.');
+      }
+    } finally {
+      setUpdatingDisplayName(false);
+    }
+  }, [displayNameDraft]);
+
   const email = user?.email ?? '—';
   const displayName = user?.displayName?.trim() || 'Not set';
 
@@ -76,7 +105,44 @@ export default function SettingsScreen() {
         <View style={styles.divider} />
         <View style={styles.row}>
           <Text style={styles.label}>Display name</Text>
-          <Text style={styles.value}>{displayName}</Text>
+          {editingDisplayName ? (
+            <View style={styles.displayNameEdit}>
+              <TextInput
+                style={styles.displayNameInput}
+                value={displayNameDraft}
+                onChangeText={setDisplayNameDraft}
+                placeholder="Enter display name"
+                placeholderTextColor={AppColors.textSecondary}
+                autoFocus
+                editable={!updatingDisplayName}
+              />
+              <View style={styles.displayNameActions}>
+                <Pressable
+                  onPress={cancelEditingDisplayName}
+                  disabled={updatingDisplayName}
+                  style={({ pressed }) => [styles.displayNameButton, pressed && styles.pressed]}>
+                  <Text style={styles.displayNameButtonTextSecondary}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={saveDisplayName}
+                  disabled={updatingDisplayName}
+                  style={({ pressed }) => [styles.displayNameButton, pressed && styles.pressed]}>
+                  {updatingDisplayName ? (
+                    <ActivityIndicator size="small" color={AppColors.primary} />
+                  ) : (
+                    <Text style={styles.displayNameButtonText}>Save</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <Pressable
+              onPress={startEditingDisplayName}
+              style={({ pressed }) => [styles.displayNameRow, pressed && styles.pressed]}>
+              <Text style={styles.value}>{displayName}</Text>
+              <Text style={styles.changeHint}>Change</Text>
+            </Pressable>
+          )}
         </View>
       </View>
 
@@ -151,6 +217,49 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 16,
     color: AppColors.text,
+    fontWeight: '500',
+  },
+  displayNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  changeHint: {
+    fontSize: 15,
+    color: AppColors.primary,
+    fontWeight: '600',
+  },
+  displayNameEdit: {
+    marginTop: 8,
+  },
+  displayNameInput: {
+    borderWidth: 1,
+    borderColor: AppColors.cardBorder,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: AppColors.text,
+    backgroundColor: AppColors.background,
+  },
+  displayNameActions: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 12,
+    justifyContent: 'flex-end',
+  },
+  displayNameButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  displayNameButtonText: {
+    fontSize: 16,
+    color: AppColors.primary,
+    fontWeight: '600',
+  },
+  displayNameButtonTextSecondary: {
+    fontSize: 16,
+    color: AppColors.textSecondary,
     fontWeight: '500',
   },
   divider: {

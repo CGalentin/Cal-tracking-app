@@ -43,6 +43,7 @@ export default function GoalsScreen() {
   const [activityLevelId, setActivityLevelId] = useState<ActivityLevelId>('sedentary');
   const [targetWeightKg, setTargetWeightKg] = useState('');
   const [dailyCalorieDelta, setDailyCalorieDelta] = useState(0);
+  const [customDeltaInput, setCustomDeltaInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [skipping, setSkipping] = useState(false);
 
@@ -58,7 +59,10 @@ export default function GoalsScreen() {
         setGender(p.gender);
         setActivityLevelId(p.activityLevelId);
         setTargetWeightKg(p.targetWeightKg != null ? String(p.targetWeightKg) : '');
-        setDailyCalorieDelta(p.dailyCalorieDelta ?? 0);
+        const delta = p.dailyCalorieDelta ?? 0;
+        setDailyCalorieDelta(delta);
+        const isPreset = DEFICIT_OPTIONS.some((o) => o.value === delta);
+        setCustomDeltaInput(isPreset ? '' : String(delta));
       }
     });
     return () => unsub();
@@ -69,6 +73,8 @@ export default function GoalsScreen() {
     const h = Number(heightCm) || profile?.heightCm || 170;
     const a = Number(age) || profile?.age || 30;
     const target = targetWeightKg.trim() !== '' ? Number(targetWeightKg) : undefined;
+    const customNum = customDeltaInput.trim() !== '' ? Number(customDeltaInput) : NaN;
+    const delta = !Number.isNaN(customNum) ? Math.round(customNum) : dailyCalorieDelta;
     return {
       weightKg: w,
       heightCm: h,
@@ -76,7 +82,7 @@ export default function GoalsScreen() {
       gender,
       activityLevelId,
       targetWeightKg: target,
-      dailyCalorieDelta,
+      dailyCalorieDelta: delta,
     };
   };
 
@@ -245,14 +251,42 @@ export default function GoalsScreen() {
           {DEFICIT_OPTIONS.map((opt) => (
             <TouchableOpacity
               key={opt.value}
-              style={[styles.optionBlock, dailyCalorieDelta === opt.value && styles.optionBlockSelected]}
-              onPress={() => setDailyCalorieDelta(opt.value)}
+              style={[
+                styles.optionBlock,
+                (customDeltaInput === '' ? dailyCalorieDelta : Number(customDeltaInput)) === opt.value &&
+                  styles.optionBlockSelected,
+              ]}
+              onPress={() => {
+                setDailyCalorieDelta(opt.value);
+                setCustomDeltaInput('');
+              }}
             >
-              <Text style={[styles.optionBlockText, dailyCalorieDelta === opt.value && styles.optionBlockTextSelected]}>
+              <Text
+                style={[
+                  styles.optionBlockText,
+                  (customDeltaInput === '' ? dailyCalorieDelta : Number(customDeltaInput)) === opt.value &&
+                    styles.optionBlockTextSelected,
+                ]}>
                 {opt.label}
               </Text>
             </TouchableOpacity>
           ))}
+          <Text style={[styles.label, { marginTop: 16 }]}>Or enter manually (kcal)</Text>
+          <TextInput
+            style={styles.input}
+            value={customDeltaInput}
+            onChangeText={(text) => {
+              setCustomDeltaInput(text);
+              const n = Number(text);
+              if (text.trim() !== '' && !Number.isNaN(n)) setDailyCalorieDelta(Math.round(n));
+            }}
+            placeholder="-500 to lose, +500 to gain"
+            placeholderTextColor={AppColors.textSecondary}
+            keyboardType="default"
+          />
+          <Text style={styles.hint}>
+            Negative = deficit (lose weight). Positive = surplus (gain weight). ~500 kcal/day ≈ 0.5 kg/week.
+          </Text>
         </View>
 
         <TouchableOpacity
@@ -287,6 +321,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: AppColors.text,
     marginBottom: 16,
+  },
+  hint: {
+    fontSize: 13,
+    color: AppColors.textSecondary,
+    marginTop: -8,
+    marginBottom: 8,
   },
   row: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   option: {

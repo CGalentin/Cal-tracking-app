@@ -10,64 +10,21 @@ import type { UserProfile } from '@/types/userProfile';
 import { calculateDailyTarget, isCalorieTargetBelowSafe } from '@/utils/calorieTarget';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 
 const DEFAULT_CALORIE_GOAL = 2000;
 const MACRO_GOALS = { carbs: 220, protein: 140, fat: 65 };
 
-const RING_SIZE = 180;
-const RING_STROKE = 14;
-const RING_RADIUS = RING_SIZE / 2;
-const INNER_SIZE = RING_SIZE - 2 * RING_STROKE;
+const RING_SIZE = 160;
+const RING_STROKE = 12;
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
+const RING_CENTER = RING_SIZE / 2;
 
-function CalorieBar({
-  eaten,
-  goal,
-  remaining,
-  progress,
-}: {
-  eaten: number;
-  goal: number;
-  remaining: number;
-  progress: number;
-}) {
-  return (
-    <View style={barStyles.wrapper}>
-      <Text style={barStyles.remainingValue}>{remaining}</Text>
-      <Text style={barStyles.remainingLabel}>CALS REMAINING</Text>
-      <View style={barStyles.track}>
-        <View style={[barStyles.fill, { width: `${Math.min(100, progress)}%` }]} />
-      </View>
-      <View style={barStyles.row}>
-        <Text style={barStyles.meta}>Goal {goal}</Text>
-        <Text style={barStyles.meta}>Eaten {eaten}</Text>
-      </View>
-    </View>
-  );
-}
-
-const barStyles = StyleSheet.create({
-  wrapper: { alignItems: 'center', width: '100%' },
-  remainingValue: { fontSize: 32, fontWeight: '700', color: AppColors.text },
-  remainingLabel: { fontSize: 11, color: AppColors.textSecondary, marginTop: 2, letterSpacing: 0.5 },
-  track: {
-    width: '100%',
-    height: 12,
-    backgroundColor: AppColors.cardBorder,
-    borderRadius: 6,
-    overflow: 'hidden',
-    marginTop: 16,
-  },
-  fill: { height: '100%', backgroundColor: AppColors.primary, borderRadius: 6 },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 12,
-    paddingHorizontal: 4,
-  },
-  meta: { fontSize: 14, color: AppColors.textSecondary },
-});
+/** Track (unfilled) and progress (filled) colors — teal + warm amber, theme-aligned */
+const RING_TRACK_COLOR = '#ca8a04';
+const RING_PROGRESS_COLOR = AppColors.primary;
+const RING_OVER_COLOR = AppColors.fat;
 
 function CalorieRing({
   eaten,
@@ -80,27 +37,37 @@ function CalorieRing({
   remaining: number;
   progress: number;
 }) {
-  const clampedProgress = Math.min(1, progress);
-  const rotationDeg = -90 + clampedProgress * 360;
+  const clampedProgress = Math.min(1, Math.max(0, progress));
+  const circumference = 2 * Math.PI * RING_RADIUS;
+  const strokeDashoffset = circumference * (1 - clampedProgress);
+  const isOver = progress > 1;
+  const progressColor = isOver ? RING_OVER_COLOR : RING_PROGRESS_COLOR;
+
   return (
     <View style={ringStyles.wrapper}>
       <View style={[ringStyles.ringContainer, { width: RING_SIZE, height: RING_SIZE }]}>
-        <View style={[ringStyles.track, { width: RING_SIZE, height: RING_SIZE, borderRadius: RING_RADIUS, borderWidth: RING_STROKE }]} />
-        <View style={ringStyles.progressClip}>
-          <View
-            style={[
-              ringStyles.semicircle,
-              {
-                width: RING_RADIUS,
-                height: RING_SIZE,
-                borderTopLeftRadius: RING_RADIUS,
-                borderBottomLeftRadius: RING_RADIUS,
-                transform: [{ rotate: `${rotationDeg}deg` }],
-              },
-            ]}
+        <Svg width={RING_SIZE} height={RING_SIZE} style={ringStyles.svg}>
+          <Circle
+            cx={RING_CENTER}
+            cy={RING_CENTER}
+            r={RING_RADIUS}
+            stroke={RING_TRACK_COLOR}
+            strokeWidth={RING_STROKE}
+            fill="none"
           />
-        </View>
-        <View style={[ringStyles.innerMask, { width: INNER_SIZE, height: INNER_SIZE, borderRadius: INNER_SIZE / 2 }]} />
+          <Circle
+            cx={RING_CENTER}
+            cy={RING_CENTER}
+            r={RING_RADIUS}
+            stroke={progressColor}
+            strokeWidth={RING_STROKE}
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${RING_CENTER} ${RING_CENTER})`}
+          />
+        </Svg>
         <View style={ringStyles.centerContent} pointerEvents="none">
           <Text style={ringStyles.remainingValue}>{remaining}</Text>
           <Text style={ringStyles.remainingLabel}>CALS REMAINING</Text>
@@ -115,35 +82,18 @@ function CalorieRing({
 
 const ringStyles = StyleSheet.create({
   wrapper: { alignItems: 'center', width: '100%' },
-  ringContainer: { alignItems: 'center', justifyContent: 'center' },
-  track: {
+  ringContainer: { alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  svg: { position: 'absolute' },
+  centerContent: {
     position: 'absolute',
-    borderColor: AppColors.cardBorder,
-    backgroundColor: 'transparent',
-  },
-  progressClip: {
-    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
     width: RING_SIZE,
     height: RING_SIZE,
-    borderRadius: RING_RADIUS,
-    overflow: 'hidden',
   },
-  semicircle: {
-    position: 'absolute',
-    left: RING_RADIUS / 2,
-    top: 0,
-    backgroundColor: AppColors.primary,
-  },
-  innerMask: {
-    position: 'absolute',
-    top: RING_STROKE,
-    left: RING_STROKE,
-    backgroundColor: AppColors.card,
-  },
-  centerContent: { alignItems: 'center', justifyContent: 'center' },
-  remainingValue: { fontSize: 36, fontWeight: '700', color: AppColors.text },
+  remainingValue: { fontSize: 32, fontWeight: '700', color: AppColors.text },
   remainingLabel: { fontSize: 11, color: AppColors.textSecondary, marginTop: 2, letterSpacing: 0.5 },
-  goalEaten: { fontSize: 13, color: AppColors.textSecondary, marginTop: 8 },
+  goalEaten: { fontSize: 13, color: AppColors.textSecondary, marginTop: 6 },
 });
 
 type MealItem = { id: string; foodItems?: string[]; estimatedCalories?: number; createdAt?: unknown };
@@ -198,21 +148,12 @@ export default function HomeScreen() {
       )}
 
       <View style={styles.calorieCard}>
-        {Platform.OS === 'web' ? (
-          <CalorieRing
-            eaten={eaten}
-            goal={calorieTarget}
-            remaining={remaining}
-            progress={caloriePct / 100}
-          />
-        ) : (
-          <CalorieBar
-            eaten={eaten}
-            goal={calorieTarget}
-            remaining={remaining}
-            progress={caloriePct}
-          />
-        )}
+        <CalorieRing
+          eaten={eaten}
+          goal={calorieTarget}
+          remaining={remaining}
+          progress={caloriePct / 100}
+        />
       </View>
 
       <View style={styles.twoCards}>

@@ -33,6 +33,18 @@ export const signIn = async (email, password) => {
   }
 };
 
+// Update display name for the current user
+export const updateDisplayName = async (newName) => {
+  try {
+    const user = auth.currentUser;
+    if (!user) return { success: false, error: new Error('Not signed in') };
+    await updateProfile(user, { displayName: (newName ?? '').trim() || '' });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error };
+  }
+};
+
 // Sign out
 export const logOut = async () => {
   try {

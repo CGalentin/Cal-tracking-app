@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   messageLabelUser: {
-    color: '#007AFF',
+    color: AppColors.primary,
   },
   messageLabelAssistant: {
     color: '#6b7280',
@@ -636,7 +636,7 @@ const styles = StyleSheet.create({
     }),
   },
   messageBubbleUser: {
-    backgroundColor: '#007AFF',
+    backgroundColor: AppColors.primary,
   },
   messageBubbleAssistant: {
     backgroundColor: '#ffffff',
@@ -810,9 +810,9 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: AppColors.card,
+    backgroundColor: AppColors.primary,
     borderWidth: 1,
-    borderColor: AppColors.cardBorder,
+    borderColor: AppColors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -843,7 +843,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: '#d1d5db',
+    backgroundColor: AppColors.primary,
+    opacity: 0.5,
   },
   buttonDisabled: {
     opacity: 0.6,
