@@ -1,4 +1,4 @@
-import { useNavigation } from '@react-navigation/native';
+import { TabActions, useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Audio } from 'expo-av';
 import { Image } from 'expo-image';
@@ -176,7 +176,9 @@ export default function ChatScreen() {
 
   const goToHomeForBurnedCalories = () => {
     dismissBurnReminder();
-    router.push('/(tabs)/index');
+    // Do not use router.replace('/(tabs)') here: on static web that path is not a real URL (groups are
+    // stripped), so Expo Router shows "Unmatched Route". Jumping tabs updates the URL correctly.
+    navigation.dispatch(TabActions.jumpTo('index'));
   };
 
   // Initialize conversation and subscribe to messages (history stored in Firestore; only show this session)
