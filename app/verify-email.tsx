@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,15 +10,59 @@ import {
   View,
 } from 'react-native';
 
-import { logOut, resendVerificationEmail } from '@/components/authService';
+import { logOut, reloadCurrentUser, resendVerificationEmail } from '@/components/authService';
 import { getUserFriendlyMessage } from '@/utils/errorMessages';
 import { AppColors } from '@/constants/theme';
 
 const BACKGROUND_IMAGE = require('@/assets/images/landing-screen-background.jpg');
 
+const POLL_MS = 30_000;
+
 export default function VerifyEmailScreen() {
   const router = useRouter();
   const [resending, setResending] = useState(false);
+  const [checking, setChecking] = useState(false);
+
+  const refreshAndLeaveIfVerified = useCallback(async () => {
+    const result = await reloadCurrentUser();
+    if (result.success && result.user?.emailVerified) {
+      router.replace('login');
+      return true;
+    }
+    return false;
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshAndLeaveIfVerified();
+      const id = setInterval(() => {
+        void refreshAndLeaveIfVerified();
+      }, POLL_MS);
+      return () => clearInterval(id);
+    }, [refreshAndLeaveIfVerified])
+  );
+
+  const handleContinue = async () => {
+    if (checking) return;
+    setChecking(true);
+    try {
+      const result = await reloadCurrentUser();
+      if (!result.success) {
+        Alert.alert('Error', getUserFriendlyMessage(result.error, 'auth'));
+        return;
+      }
+      if (result.user?.emailVerified) {
+        router.replace('login');
+        return;
+      }
+      Alert.alert(
+        'Not verified yet',
+        'Open the link in the email we sent, then try again. Check your spam folder.'
+      );
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const handleResend = async () => {
     if (resending) return;
@@ -55,7 +99,19 @@ export default function VerifyEmailScreen() {
         <Text style={styles.hint}>Check your spam folder if you don't see it.</Text>
 
         <TouchableOpacity
-          style={[styles.primaryButton, resending && styles.buttonDisabled]}
+          style={[styles.primaryButton, checking && styles.buttonDisabled]}
+          onPress={handleContinue}
+          disabled={checking}
+          activeOpacity={0.85}>
+          {checking ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <Text style={styles.primaryButtonText}>I've verified my email</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.primaryButton, resending && styles.buttonDisabled, styles.secondaryAction]}
           onPress={handleResend}
           disabled={resending}
           activeOpacity={0.85}>
@@ -116,6 +172,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginBottom: 12,
+  },
+  secondaryAction: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   buttonDisabled: {
     opacity: 0.6,

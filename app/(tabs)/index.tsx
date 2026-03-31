@@ -71,10 +71,12 @@ function CalorieRing({
         <View style={ringStyles.centerContent} pointerEvents="none">
           <Text style={ringStyles.remainingValue}>{remaining}</Text>
           <Text style={ringStyles.remainingLabel}>CALS REMAINING</Text>
-          <Text style={ringStyles.goalEaten}>
-            Goal {goal} · Eaten {eaten}
-          </Text>
         </View>
+      </View>
+      <View style={ringStyles.goalEatenBlock}>
+        <Text style={ringStyles.goalEatenBold}>Goal {goal}</Text>
+        <Text style={ringStyles.goalEatenDot}>·</Text>
+        <Text style={ringStyles.goalEatenBold}>Eaten {eaten}</Text>
       </View>
     </View>
   );
@@ -93,7 +95,17 @@ const ringStyles = StyleSheet.create({
   },
   remainingValue: { fontSize: 32, fontWeight: '700', color: AppColors.text },
   remainingLabel: { fontSize: 11, color: AppColors.textSecondary, marginTop: 2, letterSpacing: 0.5 },
-  goalEaten: { fontSize: 13, color: AppColors.textSecondary, marginTop: 6 },
+  goalEatenBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 20,
+    paddingHorizontal: 8,
+  },
+  goalEatenBold: { fontSize: 16, fontWeight: '800', color: AppColors.text, letterSpacing: -0.2 },
+  goalEatenDot: { fontSize: 16, fontWeight: '700', color: AppColors.textSecondary },
 });
 
 type MealItem = { id: string; foodItems?: string[]; estimatedCalories?: number; createdAt?: unknown };

@@ -1,14 +1,8 @@
-import { useRouter } from 'expo-router';
+import { Link } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import {
-    calculateDailyTotals,
-    formatDateKeyForDisplay,
-    getTodayDateKey,
-    groupMealsByDate,
-    subscribeToMeals,
-} from '@/components/chatService';
+import { calculateDailyTotals, formatDateKeyForDisplay, getTodayDateKey, groupMealsByDate, subscribeToMeals } from '@/components/chatService';
 import { AppColors } from '@/constants/theme';
 
 type Meal = {
@@ -50,8 +44,13 @@ function formatTime(timestamp: unknown): string {
   });
 }
 
+const CHAT_HREF = '/(tabs)/chat' as const;
+
+function chatHrefForMealEdit(mealId: string) {
+  return `/(tabs)/chat?mealEdit=${encodeURIComponent(mealId)}`;
+}
+
 export default function MealsScreen() {
-  const router = useRouter();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,8 +87,51 @@ export default function MealsScreen() {
       });
     });
 
+    // Meals with missing/invalid createdAt are skipped by groupMealsByDate — still show them in one section
+    if (sectionData.length === 0 && meals.length > 0) {
+      sectionData.push({
+        title: 'Meals',
+        dateKey: 'unscheduled',
+        data: meals,
+        totals: calculateDailyTotals(meals),
+      });
+    }
+
     return { sections: sectionData, todayTotals: todayTotalsCalc };
   }, [meals]);
+
+  const recentMeals = useMemo(() => meals.slice(0, 5), [meals]);
+
+  const renderMealCard = (item: Meal) => (
+    <View style={styles.mealCard}>
+      <View style={styles.mealCardTop}>
+        <Text style={styles.mealTime}>{formatTime(item.createdAt)}</Text>
+        <View style={styles.mealActions}>
+          <Link href={chatHrefForMealEdit(item.id)} asChild>
+            <TouchableOpacity hitSlop={12} accessibilityLabel="Edit meal in chat">
+              <Text style={styles.mealActionEdit}>Edit</Text>
+            </TouchableOpacity>
+          </Link>
+        </View>
+      </View>
+      {item.foodItems && item.foodItems.length > 0 && (
+        <Text style={styles.mealItems}>{item.foodItems.join(', ')}</Text>
+      )}
+      <View style={styles.mealNutrition}>
+        {item.estimatedCalories != null && item.estimatedCalories > 0 && (
+          <Text style={styles.mealCal}>{item.estimatedCalories} cal</Text>
+        )}
+        {item.macros && (
+          <Text style={styles.mealMacros}>
+            P {item.macros.protein}g · C {item.macros.carbs}g · F {item.macros.fat}g
+          </Text>
+        )}
+      </View>
+      {(item.estimatedCalories == null || item.estimatedCalories === 0) && !item.macros && (
+        <Text style={styles.mealNoNutrition}>No nutrition data</Text>
+      )}
+    </View>
+  );
 
   if (loading) {
     return (
@@ -115,11 +157,14 @@ export default function MealsScreen() {
         <Text style={styles.emptyText}>
           No meals logged yet. Log a meal by sending a photo in Chat and confirming with Yes.
         </Text>
+        <Link href={CHAT_HREF} asChild>
+          <TouchableOpacity style={styles.emptyLogMealButton} activeOpacity={0.85}>
+            <Text style={styles.emptyLogMealButtonText}>Log a meal</Text>
+          </TouchableOpacity>
+        </Link>
       </View>
     );
   }
-
-  const recentMeals = useMemo(() => meals.slice(0, 5), [meals]);
 
   return (
     <View style={styles.container}>
@@ -155,13 +200,11 @@ export default function MealsScreen() {
                 <Text style={styles.todayNoMeals}>No meals logged today</Text>
               )}
             </View>
-            <TouchableOpacity
-              style={styles.scanFoodButton}
-              onPress={() => router.replace('/(tabs)/chat')}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.scanFoodButtonText}>Log a meal</Text>
-            </TouchableOpacity>
+            <Link href={CHAT_HREF} asChild>
+              <TouchableOpacity style={styles.scanFoodButton} activeOpacity={0.85}>
+                <Text style={styles.scanFoodButtonText}>Log a meal</Text>
+              </TouchableOpacity>
+            </Link>
           </View>
         }
         renderSectionHeader={({ section }) => (
@@ -173,27 +216,7 @@ export default function MealsScreen() {
             </Text>
           </View>
         )}
-        renderItem={({ item }) => (
-          <View style={styles.mealCard}>
-            <Text style={styles.mealTime}>{formatTime(item.createdAt)}</Text>
-            {item.foodItems && item.foodItems.length > 0 && (
-              <Text style={styles.mealItems}>{item.foodItems.join(', ')}</Text>
-            )}
-            <View style={styles.mealNutrition}>
-              {item.estimatedCalories != null && item.estimatedCalories > 0 && (
-                <Text style={styles.mealCal}>{item.estimatedCalories} cal</Text>
-              )}
-              {item.macros && (
-                <Text style={styles.mealMacros}>
-                  P {item.macros.protein}g · C {item.macros.carbs}g · F {item.macros.fat}g
-                </Text>
-              )}
-            </View>
-            {(item.estimatedCalories == null || item.estimatedCalories === 0) && !item.macros && (
-              <Text style={styles.mealNoNutrition}>No nutrition data</Text>
-            )}
-          </View>
-        )}
+        renderItem={({ item }) => renderMealCard(item)}
         stickySectionHeadersEnabled={false}
         ListFooterComponent={
           recentMeals.length > 0 ? (
@@ -206,6 +229,11 @@ export default function MealsScreen() {
                     {meal.foodItems?.length ? meal.foodItems.join(', ') : 'Meal'}
                   </Text>
                   <Text style={styles.recentCals}>{meal.estimatedCalories ?? 0} cals</Text>
+                  <Link href={chatHrefForMealEdit(meal.id)} asChild>
+                    <TouchableOpacity hitSlop={8} accessibilityLabel="Edit meal in chat">
+                      <Text style={styles.mealActionEdit}>Edit</Text>
+                    </TouchableOpacity>
+                  </Link>
                 </View>
               ))}
             </View>
@@ -236,6 +264,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 18,
     lineHeight: 26,
+    marginBottom: 24,
+  },
+  emptyLogMealButton: {
+    backgroundColor: AppColors.primary,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+  },
+  emptyLogMealButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   listContent: { padding: 16, paddingBottom: 24 },
   headerBlock: { marginBottom: 16 },
@@ -334,7 +375,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: AppColors.cardBorder,
   },
-  mealTime: { color: AppColors.textSecondary, fontSize: 12, marginBottom: 4 },
+  mealCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  mealActions: { flexDirection: 'row', gap: 16 },
+  mealActionEdit: { fontSize: 14, fontWeight: '600', color: AppColors.primary },
+  mealTime: { color: AppColors.textSecondary, fontSize: 12 },
   mealItems: { color: AppColors.text, fontWeight: '500', marginBottom: 8 },
   mealNutrition: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 4 },
   mealCal: { fontSize: 17, fontWeight: '600', color: AppColors.text },
@@ -360,6 +409,6 @@ const styles = StyleSheet.create({
     borderBottomColor: AppColors.cardBorder,
   },
   recentIcon: { fontSize: 18, marginRight: 12 },
-  recentLabel: { flex: 1, fontSize: 15, color: AppColors.text },
-  recentCals: { fontSize: 14, color: AppColors.textSecondary },
+  recentLabel: { flex: 1, fontSize: 15, color: AppColors.text, marginRight: 8 },
+  recentCals: { fontSize: 14, color: AppColors.textSecondary, marginRight: 8 },
 });

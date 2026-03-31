@@ -9,10 +9,17 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == conversationId;
       }
     }
-    // Users can read their own meals (Cloud Functions write them)
+    // Users read their own meals; Cloud Functions create them; users may update/delete their own.
+    // Partial updateDoc() merges fields — comparing request.resource.data.userId to resource.data.userId
+    // can fail in rules; instead allow updates that only touch editable fields.
     match /meals/{mealId} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow write: if false;  // Only Cloud Functions write meals
+      allow create: if false;
+      allow update: if request.auth != null
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['foodItems', 'estimatedCalories', 'macros']);
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
     // Users can read/write their own profile (onboarding, settings)
     match /userProfiles/{userId} {

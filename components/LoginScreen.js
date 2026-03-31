@@ -14,7 +14,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { signIn, signUp } from './authService';
+import { isValidEmail } from '@/utils/isValidEmail';
+import { sendPasswordReset, signIn, signUp } from './authService';
 
 const BACKGROUND_IMAGE = require('@/assets/images/landing-screen-background.jpg');
 
@@ -25,6 +26,7 @@ export default function LoginScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [screen, setScreen] = useState('welcome');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [forgotSending, setForgotSending] = useState(false);
 
   const handleAuth = async () => {
     if (isSignUp && !displayName) {
@@ -32,8 +34,14 @@ export default function LoginScreen() {
       return;
     }
 
-    if (!email || !password) {
+    const emailTrimmed = email.trim();
+    if (!emailTrimmed || !password) {
       Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (!isValidEmail(emailTrimmed)) {
+      Alert.alert('Error', 'Please enter a valid email address.');
       return;
     }
 
@@ -42,22 +50,49 @@ export default function LoginScreen() {
 
     try {
       const result = isSignUp
-        ? await signUp(email, password, displayName)
-        : await signIn(email, password);
+        ? await signUp(emailTrimmed, password, displayName)
+        : await signIn(emailTrimmed, password);
 
       if (result.success) {
-        Alert.alert(
-          'Success',
-          isSignUp
-            ? 'Account created! Please check your email and click the verification link to continue.'
-            : 'Logged in!'
-        );
+        if (!isSignUp) {
+          Alert.alert('Success', 'Logged in!');
+        }
       } else {
         const message = getUserFriendlyMessage(result.error, 'auth');
         Alert.alert('Error', message);
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const emailTrimmed = email.trim();
+    if (!emailTrimmed) {
+      Alert.alert(
+        'Email required',
+        'Enter the email for your account in the field above, then tap Forgot password again.'
+      );
+      return;
+    }
+    if (!isValidEmail(emailTrimmed)) {
+      Alert.alert('Error', 'Please enter a valid email address.');
+      return;
+    }
+    if (forgotSending) return;
+    setForgotSending(true);
+    try {
+      const result = await sendPasswordReset(emailTrimmed);
+      if (result.success) {
+        Alert.alert(
+          'Check your email',
+          'If an account exists for that address, we sent a link to reset your password. Check your spam folder if you do not see it.'
+        );
+      } else {
+        Alert.alert('Error', getUserFriendlyMessage(result.error, 'auth'));
+      }
+    } finally {
+      setForgotSending(false);
     }
   };
 
@@ -150,6 +185,18 @@ export default function LoginScreen() {
                   secureTextEntry
                 />
               </View>
+
+              {!isSignUp && (
+                <TouchableOpacity
+                  style={styles.forgotRow}
+                  onPress={handleForgotPassword}
+                  disabled={forgotSending || isSubmitting}
+                  activeOpacity={0.85}>
+                  <Text style={[styles.forgotLink, (forgotSending || isSubmitting) && styles.forgotLinkDisabled]}>
+                    {forgotSending ? 'Sending…' : 'Forgot password?'}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
@@ -268,6 +315,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     fontSize: 16,
     color: '#ffffff',
+  },
+  forgotRow: {
+    alignSelf: 'flex-end',
+    marginBottom: 8,
+    paddingVertical: 4,
+  },
+  forgotLink: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.95)',
+    textDecorationLine: 'underline',
+  },
+  forgotLinkDisabled: {
+    opacity: 0.55,
   },
   backButton: {
     marginTop: 24,

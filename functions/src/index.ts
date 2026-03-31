@@ -203,6 +203,99 @@ function parseVisionResponse(text: string): { foodList: string; foods: string[];
 }
 
 /**
+ * User is fixing an existing `meals/{mealId}` doc (Meals tab edit or implicit correction after "Meal logged").
+ */
+async function applyLoggedMealCorrection(
+  conversationId: string,
+  messagesRef: admin.firestore.CollectionReference,
+  mealId: string,
+  correction: string,
+  apiKey: string
+): Promise<void> {
+  const trimmedCorrection = correction.trim();
+  if (!trimmedCorrection) {
+    await messagesRef.add({
+      role: "assistant",
+      type: "text",
+      text: 'Describe what to change about this logged meal (for example: "that was turkey, not chicken" or "add a side of rice"), then tap Send.',
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return;
+  }
+
+  const mealSnap = await db.collection("meals").doc(mealId).get();
+  const mealData = mealSnap.data();
+  if (!mealSnap.exists || (mealData?.userId as string) !== conversationId) {
+    await messagesRef.add({
+      role: "assistant",
+      type: "text",
+      text: "I couldn't find that meal in your log. It may have been deleted.",
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return;
+  }
+
+  const foodItemsExisting = (mealData?.foodItems as string[]) ?? [];
+  const estCalExisting = (mealData?.estimatedCalories as number | undefined) ?? 0;
+  let resultEdit: { text: string } | null = null;
+  try {
+    resultEdit = await sendCorrectionToGemini(trimmedCorrection, foodItemsExisting, estCalExisting, apiKey);
+  } catch (err) {
+    logger.error("applyLoggedMealCorrection sendCorrectionToGemini failed", err);
+  }
+  if (!resultEdit) {
+    await messagesRef.add({
+      role: "assistant",
+      type: "text",
+      text: "I couldn't apply that change. Try describing the correction more clearly.",
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return;
+  }
+
+  const { foods: updatedFoodItems, estimatedCalories: updatedCalories } = parseVisionResponse(resultEdit.text);
+  const updatedMacros =
+    updatedCalories != null && updatedCalories > 0
+      ? estimateMacrosFromCalories(updatedCalories)
+      : null;
+  const updatePayload: Record<string, unknown> = {
+    foodItems: updatedFoodItems,
+    estimatedCalories: updatedCalories ?? 0,
+  };
+  if (updatedMacros != null) {
+    updatePayload.macros = updatedMacros;
+  } else {
+    updatePayload.macros = admin.firestore.FieldValue.delete();
+  }
+  await db.collection("meals").doc(mealId).update(updatePayload);
+
+  const summaryLine: string[] = ["I've updated this meal in your log."];
+  if (updatedFoodItems.length > 0) {
+    summaryLine.push(updatedFoodItems.join(", "));
+  }
+  if (updatedCalories != null && updatedCalories > 0) {
+    summaryLine.push(formatNutritionSummary(updatedCalories));
+  }
+  await messagesRef.add({
+    role: "assistant",
+    type: "text",
+    text: summaryLine.join(" "),
+    foodDescription: resultEdit.text,
+    foodItems: updatedFoodItems,
+    isCorrectionUpdate: true,
+    mealRefId: mealId,
+    ...(updatedCalories != null && { estimatedCalories: updatedCalories }),
+    ...(updatedMacros != null && { macros: updatedMacros }),
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  logger.info("Meal edited from chat", { conversationId, mealId, updatedCalories });
+}
+
+/** After "Meal logged", treat follow-up as an in-place meal fix instead of starting a new log flow. */
+const IMPLICIT_LOGGED_MEAL_CORRECTION =
+  /\b(wrong|actually|mistake|instead|meant|correction|forgot|fix|update|misread|not what|wasn'?t|isn'?t|oops|typo|correct)\b|\bnot (the|a|an) \b|^no[,.\s]|change the |it was |should be |supposed to be /i;
+
+/**
  * Download image from URL and resize to max 1024px on longest side (keeps aspect ratio).
  * Returns the resized image buffer and metadata, or null if download/resize failed.
  */
@@ -462,10 +555,26 @@ export const onTextMealMessageCreated = onDocumentCreated(
     if (text === "No") return; // "No" is handled by confirmation flow; no AI processing needed
 
     const { conversationId } = event.params;
-    const messagesRef = db.collection("conversations").doc(conversationId).collection("messages");
     const newMsgTimestamp = data.timestamp;
     if (!newMsgTimestamp) {
       logger.warn("onTextMealMessageCreated: message has no timestamp");
+      return;
+    }
+    const messagesRef = db.collection("conversations").doc(conversationId).collection("messages");
+
+    /** Meals tab → Chat: `[meal-edit:id] …` updates that meal doc in place */
+    const mealEditMatch = text.match(/^\[meal-edit:([^\]]+)\]\s*([\s\S]*)$/);
+    if (mealEditMatch) {
+      const mealId = mealEditMatch[1]?.trim() ?? "";
+      if (!mealId) return;
+      const correction = mealEditMatch[2] ?? "";
+      await applyLoggedMealCorrection(
+        conversationId,
+        messagesRef,
+        mealId,
+        correction,
+        geminiApiKeySecret.value()
+      );
       return;
     }
 
@@ -568,6 +677,30 @@ export const onTextMealMessageCreated = onDocumentCreated(
         });
         return;
       }
+    }
+
+    /** After "Meal logged", a correction-like message should update that row — not start a new log + duplicate meal on Yes */
+    const priorMealSnap = await messagesRef
+      .where("timestamp", "<", newMsgTimestamp)
+      .orderBy("timestamp", "desc")
+      .limit(1)
+      .get();
+    const priorMsg = priorMealSnap.docs[0]?.data();
+    const lastLoggedMealId =
+      typeof priorMsg?.mealId === "string" ? priorMsg.mealId.trim() : "";
+    if (
+      priorMsg?.mealLogged === true &&
+      lastLoggedMealId !== "" &&
+      IMPLICIT_LOGGED_MEAL_CORRECTION.test(text)
+    ) {
+      await applyLoggedMealCorrection(
+        conversationId,
+        messagesRef,
+        lastLoggedMealId,
+        text,
+        geminiApiKeySecret.value()
+      );
+      return;
     }
 
     // New meal flow (PR 13)

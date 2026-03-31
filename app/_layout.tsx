@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -8,9 +9,11 @@ import 'react-native-reanimated';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { getHasSeenFeatureTour } from '@/components/featureTourStorage';
 import { getProfile, profileNeedsGoals, subscribeToProfile } from '@/components/userProfileService';
+import { STORAGE_KEYS } from '@/constants/storageKeys';
 import type { UserProfile } from '@/types/userProfile';
 import { AppColors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { auth } from '@/components/firebaseConfig';
 import { subscribeToAuthChanges } from '../components/authService';
 
 export default function RootLayout() {
@@ -21,6 +24,8 @@ export default function RootLayout() {
   const [user, setUser] = useState<unknown | null>(null);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null | undefined>(undefined);
+  /** null = not read yet; true = must verify (set only after sign-up); false = sign-in or cleared */
+  const [enforceEmailVerify, setEnforceEmailVerify] = useState<boolean | null>(null);
 
   // Subscribe to Firebase auth state
   useEffect(() => {
@@ -31,6 +36,21 @@ export default function RootLayout() {
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setEnforceEmailVerify(false);
+      return undefined;
+    }
+    setEnforceEmailVerify(null);
+    let cancelled = false;
+    void AsyncStorage.getItem(STORAGE_KEYS.ENFORCE_EMAIL_VERIFY_AFTER_SIGNUP).then((v) => {
+      if (!cancelled) setEnforceEmailVerify(v === '1');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   // When user is set, resolve profile (initial fetch for login redirect, then subscribe so we see updates)
   useEffect(() => {
@@ -62,8 +82,16 @@ export default function RootLayout() {
     const inAuthGroup = segments[0] === 'login';
     const inVerifyEmail = segments[0] === 'verify-email';
     const isLoggedIn = !!user;
-    const firebaseUser = user as { emailVerified?: boolean } | null;
-    const needsVerification = isLoggedIn && firebaseUser && !firebaseUser.emailVerified;
+    // Use live Firebase user so we don't stay stuck after reload() before React auth state updates
+    const liveUser = auth.currentUser ?? (user as { emailVerified?: boolean } | null);
+    const emailVerified = liveUser?.emailVerified === true;
+    const needsVerification =
+      isLoggedIn &&
+      enforceEmailVerify === true &&
+      !!liveUser &&
+      !emailVerified;
+
+    if (isLoggedIn && enforceEmailVerify === null) return undefined;
 
     if (!isLoggedIn && !inAuthGroup) {
       router.replace('login');
@@ -71,13 +99,17 @@ export default function RootLayout() {
     }
 
     if (!isLoggedIn) return undefined;
-    if (!inAuthGroup && !inVerifyEmail) return undefined;
 
-    // Require email verification before proceeding
+    // Send unverified users to verify-email from any route (e.g. login or stale tabs)
     if (needsVerification && !inVerifyEmail) {
       router.replace('verify-email');
       return undefined;
     }
+
+    // Do not run onboarding / tabs / tour while email is still unverified
+    if (needsVerification) return undefined;
+
+    if (!inAuthGroup && !inVerifyEmail) return undefined;
 
     if (profile === undefined) return undefined;
 
@@ -106,16 +138,26 @@ export default function RootLayout() {
     return () => {
       cancelled = true;
     };
-  }, [user, loading, profile, segments, router]);
+  }, [user, loading, profile, segments, router, enforceEmailVerify]);
 
   // Returning users on tabs: show feature tour once if they have not seen it (PR 19)
   useEffect(() => {
+    const liveUser = auth.currentUser ?? (user as { emailVerified?: boolean } | null);
+    if (liveUser && enforceEmailVerify === true && liveUser.emailVerified !== true) return undefined;
+
     if (loading || !user || profile === undefined || profile === null || profileNeedsGoals(profile)) {
       return undefined;
     }
     if (!segments.length) return undefined;
     const seg0 = segments[0];
     if (seg0 === 'login' || seg0 === 'feature-tour') return undefined;
+
+    // Only open the feature tour from the Home tab — otherwise opening Goals/Meals/etc. on web gets
+    // replaced immediately and looks like the screen "won't load".
+    if (seg0 !== '(tabs)') return undefined;
+    const tabRoute = segments[1];
+    const isHomeTab = tabRoute === undefined || tabRoute === 'index';
+    if (!isHomeTab) return undefined;
 
     let cancelled = false;
     void getHasSeenFeatureTour().then((seen) => {
@@ -127,7 +169,7 @@ export default function RootLayout() {
     return () => {
       cancelled = true;
     };
-  }, [loading, user, profile, segments, router]);
+  }, [loading, user, profile, segments, router, enforceEmailVerify]);
 
   // While checking auth, show a simple loading screen
   if (loading) {

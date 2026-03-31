@@ -1,4 +1,5 @@
 import { useNavigation } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Audio } from 'expo-av';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,6 +19,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChatHelpModal } from '@/components/ChatHelpModal';
 import {
@@ -46,10 +48,27 @@ type Message = {
   macros?: Macros;
   foodItems?: string[];
   isCorrectionUpdate?: boolean;
+  mealRefId?: string;
 };
+
+const BURN_REMINDER_AUTO_DISMISS_MS = 12_000;
+
+/** Strip internal `[meal-edit:id]` prefix so the bubble shows only what the user typed. */
+function stripMealEditPrefix(raw: string): string {
+  const m = raw.match(/^\[meal-edit:[^\]]+\]\s*([\s\S]*)$/);
+  return m ? m[1] : raw;
+}
+
+function formatUserBubbleText(raw: string): string {
+  const inner = stripMealEditPrefix(raw);
+  return inner.trim() === '' ? 'Fix this logged meal' : inner;
+}
 
 export default function ChatScreen() {
   const navigation = useNavigation();
+  const router = useRouter();
+  const params = useLocalSearchParams<{ mealEdit?: string | string[] }>();
+  const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const [helpVisible, setHelpVisible] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -70,6 +89,12 @@ export default function ChatScreen() {
   const recordingRef = useRef<Audio.Recording | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const sessionStartRef = useRef<number>(Date.now());
+  const [burnReminderVisible, setBurnReminderVisible] = useState(false);
+  /** When set, the next text/voice sends are prefixed for server-side meal correction. */
+  const [pendingMealEditId, setPendingMealEditId] = useState<string | null>(null);
+  const seenMealLogIdsRef = useRef<Set<string>>(new Set());
+  const skipInitialMealToastRef = useRef(true);
+  const burnReminderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -83,6 +108,76 @@ export default function ChatScreen() {
       ),
     });
   }, [navigation]);
+
+  useEffect(() => {
+    seenMealLogIdsRef.current.clear();
+    skipInitialMealToastRef.current = true;
+  }, [retryKey]);
+
+  useEffect(() => {
+    return () => {
+      if (burnReminderTimerRef.current) {
+        clearTimeout(burnReminderTimerRef.current);
+        burnReminderTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const raw = params.mealEdit;
+    const id =
+      typeof raw === 'string'
+        ? raw.trim()
+        : Array.isArray(raw) && raw[0]
+          ? String(raw[0]).trim()
+          : '';
+    if (!id) return;
+    setPendingMealEditId(id);
+    router.setParams({ mealEdit: undefined });
+  }, [params.mealEdit, router]);
+
+  useEffect(() => {
+    if (!pendingMealEditId) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant' || !last.isCorrectionUpdate) return;
+    if (last.mealRefId === pendingMealEditId) {
+      setPendingMealEditId(null);
+    }
+  }, [messages, pendingMealEditId]);
+
+  // After a meal is logged, show a one-time bubble reminding users to log calories burned (Home tab)
+  useEffect(() => {
+    if (loading) return;
+    const mealMessages = messages.filter((m) => m.mealLogged && m.id);
+    if (skipInitialMealToastRef.current) {
+      mealMessages.forEach((m) => seenMealLogIdsRef.current.add(m.id));
+      skipInitialMealToastRef.current = false;
+      return;
+    }
+    const newest = mealMessages[mealMessages.length - 1];
+    if (newest?.id && !seenMealLogIdsRef.current.has(newest.id)) {
+      seenMealLogIdsRef.current.add(newest.id);
+      if (burnReminderTimerRef.current) clearTimeout(burnReminderTimerRef.current);
+      setBurnReminderVisible(true);
+      burnReminderTimerRef.current = setTimeout(() => {
+        setBurnReminderVisible(false);
+        burnReminderTimerRef.current = null;
+      }, BURN_REMINDER_AUTO_DISMISS_MS);
+    }
+  }, [messages, loading]);
+
+  const dismissBurnReminder = () => {
+    if (burnReminderTimerRef.current) {
+      clearTimeout(burnReminderTimerRef.current);
+      burnReminderTimerRef.current = null;
+    }
+    setBurnReminderVisible(false);
+  };
+
+  const goToHomeForBurnedCalories = () => {
+    dismissBurnReminder();
+    router.push('/(tabs)/index');
+  };
 
   // Initialize conversation and subscribe to messages (history stored in Firestore; only show this session)
   useEffect(() => {
@@ -125,14 +220,21 @@ export default function ChatScreen() {
   }, [retryKey]);
 
   const handleSend = async () => {
-    if (!inputText.trim() || !conversationId || sendingMessage) return;
+    if (!conversationId || sendingMessage) return;
+    const trimmed = inputText.trim();
+    if (!pendingMealEditId && !trimmed) return;
 
-    const textToSend = inputText.trim();
+    const textToSend = pendingMealEditId
+      ? `[meal-edit:${pendingMealEditId}] ${trimmed}`
+      : trimmed;
     setInputText('');
     setSendingMessage(true);
 
     const lastMsg = messages[messages.length - 1];
     if (lastMsg?.role === 'user' && lastMsg?.text === 'No') {
+      setProcessingCorrection(true);
+    }
+    if (pendingMealEditId) {
       setProcessingCorrection(true);
     }
 
@@ -269,7 +371,12 @@ export default function ChatScreen() {
         if (lastMsg?.role === 'user' && lastMsg?.text === 'No') {
           setProcessingCorrection(true);
         }
-        await sendMessage(conversationId, 'user', transcript.trim());
+        let toSend = transcript.trim();
+        if (pendingMealEditId) {
+          setProcessingCorrection(true);
+          toSend = `[meal-edit:${pendingMealEditId}] ${toSend}`;
+        }
+        await sendMessage(conversationId, 'user', toSend);
       } else {
         Alert.alert(
           'No speech detected',
@@ -368,10 +475,8 @@ export default function ChatScreen() {
                 )}
               </View>
             ) : (
-              <Text
-                style={[styles.messageText, textStyle]}
-              >
-                {message.text}
+              <Text style={[styles.messageText, textStyle]}>
+                {isUser ? formatUserBubbleText(message.text) : message.text}
               </Text>
             )}
           </View>
@@ -522,6 +627,36 @@ export default function ChatScreen() {
         </View>
       ) : null}
 
+      {burnReminderVisible ? (
+        <View
+          style={[
+            styles.burnReminderContainer,
+            { paddingBottom: Math.max(insets.bottom, 8) + 96 },
+          ]}
+          pointerEvents="box-none">
+          <View style={styles.burnReminderBubble} pointerEvents="auto">
+            <TouchableOpacity
+              style={styles.burnReminderClose}
+              onPress={dismissBurnReminder}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="Dismiss reminder">
+              <Text style={styles.burnReminderCloseText}>×</Text>
+            </TouchableOpacity>
+            <Text style={styles.burnReminderTitle}>Log calories burned?</Text>
+            <Text style={styles.burnReminderBody}>
+              If you exercised, add calories burned on the Home tab so your remaining calories stay
+              accurate.
+            </Text>
+            <TouchableOpacity
+              style={styles.burnReminderCta}
+              onPress={goToHomeForBurnedCalories}
+              activeOpacity={0.85}>
+              <Text style={styles.burnReminderCtaText}>Open Home</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.inputBarContainer}>
         <View style={styles.inputRow}>
           <TouchableOpacity
@@ -545,11 +680,13 @@ export default function ChatScreen() {
                   ? 'Transcribing...'
                   : processingCorrection
                     ? 'Processing correction…'
-                    : messages.length > 0 &&
-                        messages[messages.length - 1]?.role === 'assistant' &&
-                        String(messages[messages.length - 1]?.text || '').includes('What would you like to correct')
-                      ? 'Type or speak your correction...'
-                      : 'Type a message...'
+                    : pendingMealEditId
+                      ? 'Describe what to change, or Send for tips…'
+                      : messages.length > 0 &&
+                          messages[messages.length - 1]?.role === 'assistant' &&
+                          String(messages[messages.length - 1]?.text || '').includes('What would you like to correct')
+                        ? 'Type or speak your correction...'
+                        : 'Type a message...'
             }
             placeholderTextColor="#9ca3af"
             value={inputText}
@@ -560,10 +697,12 @@ export default function ChatScreen() {
           />
           <TouchableOpacity
             onPress={handleSend}
-            disabled={!inputText.trim() || processingCorrection || sendingMessage}
+            disabled={
+              (!inputText.trim() && !pendingMealEditId) || processingCorrection || sendingMessage
+            }
             style={[
               styles.sendButton,
-              (!inputText.trim() || sendingMessage) && styles.sendButtonDisabled,
+              ((!inputText.trim() && !pendingMealEditId) || sendingMessage) && styles.sendButtonDisabled,
             ]}>
             {sendingMessage ? (
               <ActivityIndicator size="small" color="#ffffff" />
@@ -599,6 +738,36 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     paddingHorizontal: 4,
     paddingTop: 16,
+  },
+  mealEditBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 12,
+    marginHorizontal: 8,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: AppColors.card,
+    borderWidth: 1,
+    borderColor: AppColors.primary,
+  },
+  mealEditBannerTextWrap: { flex: 1 },
+  mealEditBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: AppColors.text,
+    marginBottom: 6,
+  },
+  mealEditBannerBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: AppColors.textSecondary,
+  },
+  mealEditBannerCancel: { paddingTop: 2 },
+  mealEditBannerCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: AppColors.textSecondary,
   },
   emptyContainer: {
     flex: 1,
@@ -930,6 +1099,71 @@ const styles = StyleSheet.create({
   declineButtonText: {
     color: '#ffffff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  burnReminderContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    zIndex: 20,
+    pointerEvents: 'box-none',
+  },
+  burnReminderBubble: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: AppColors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: AppColors.primary,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+    ...(Platform.OS !== 'web' && {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 8,
+    }),
+  },
+  burnReminderClose: {
+    position: 'absolute',
+    top: 8,
+    right: 10,
+    zIndex: 1,
+    padding: 4,
+  },
+  burnReminderCloseText: {
+    fontSize: 22,
+    color: AppColors.textSecondary,
+    lineHeight: 24,
+  },
+  burnReminderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: AppColors.text,
+    marginBottom: 6,
+    paddingRight: 28,
+  },
+  burnReminderBody: {
+    fontSize: 14,
+    color: AppColors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  burnReminderCta: {
+    alignSelf: 'flex-start',
+    backgroundColor: AppColors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  burnReminderCtaText: {
+    color: '#ffffff',
+    fontSize: 15,
     fontWeight: '600',
   },
 });

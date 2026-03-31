@@ -45,6 +45,8 @@ const DEFICIT_OPTIONS_STANDARD = [
 export default function GoalsScreen() {
   const router = useRouter();
   const [profile, setProfileState] = useState<UserProfile | null>(null);
+  /** False until Firestore (via auth-aware subscribe) has delivered at least one snapshot. */
+  const [profileReady, setProfileReady] = useState(false);
   const [useUnits, setUseUnits] = useState<UnitSystem>('standard');
   const [weightInput, setWeightInput] = useState('');
   const [heightCmInput, setHeightCmInput] = useState('');
@@ -64,6 +66,7 @@ export default function GoalsScreen() {
 
   useEffect(() => {
     const unsub = subscribeToProfile((p) => {
+      setProfileReady(true);
       setProfileState(p ?? null);
       if (p) {
         const units = p.useUnits ?? 'standard';
@@ -212,10 +215,25 @@ export default function GoalsScreen() {
     }
   };
 
-  if (profile === null) {
+  if (!profileReady) {
     return (
       <View style={styles.container}>
         <Text style={styles.placeholder}>Loading…</Text>
+      </View>
+    );
+  }
+
+  if (profile === null) {
+    const onboardingPath = Platform.OS === 'web' ? '/(tabs)/onboarding' : '(tabs)/onboarding';
+    return (
+      <View style={[styles.container, styles.missingProfileWrap]}>
+        <Text style={styles.missingProfileTitle}>Profile not found</Text>
+        <Text style={styles.missingProfileText}>
+          We couldn&apos;t load your saved metrics. Complete setup or check your connection.
+        </Text>
+        <TouchableOpacity style={styles.saveButton} onPress={() => router.replace(onboardingPath)} activeOpacity={0.85}>
+          <Text style={styles.saveButtonText}>Open setup</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -421,6 +439,21 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { padding: 24, paddingBottom: 48 },
   placeholder: { color: AppColors.textSecondary, textAlign: 'center', marginTop: 24 },
+  missingProfileWrap: { padding: 24, justifyContent: 'center', flex: 1 },
+  missingProfileTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: AppColors.text,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  missingProfileText: {
+    fontSize: 14,
+    color: AppColors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
   title: { fontSize: 22, fontWeight: '700', color: AppColors.text, marginBottom: 8 },
   subtitle: { fontSize: 14, color: AppColors.textSecondary, marginBottom: 24 },
   sectionLabel: { fontSize: 16, fontWeight: '600', color: AppColors.text, marginBottom: 12 },

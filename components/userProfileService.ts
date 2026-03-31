@@ -3,6 +3,7 @@
  * Used by onboarding and home dashboard.
  */
 
+import { onAuthStateChanged } from 'firebase/auth';
 import {
   doc,
   getDoc,
@@ -59,21 +60,37 @@ export async function getProfile(): Promise<UserProfile | null> {
   return profileFromDoc(snap.exists() ? (snap.data() as Record<string, unknown>) : undefined);
 }
 
-/** Subscribe to the current user's profile. Returns unsubscribe. */
+/**
+ * Subscribe to the current user's profile. Returns unsubscribe.
+ * Uses `onAuthStateChanged` so listeners attach after auth restores on web (avoids a stuck "Loading" when
+ * `auth.currentUser` was still null on first paint).
+ */
 export function subscribeToProfile(callback: (profile: UserProfile | null) => void): () => void {
-  const user = auth.currentUser;
-  if (!user) {
-    callback(null);
-    return () => {};
-  }
-  const ref = doc(db, COLLECTION, user.uid);
-  return onSnapshot(
-    ref,
-    (snap) => {
-      callback(profileFromDoc(snap.exists() ? (snap.data() as Record<string, unknown>) : undefined));
-    },
-    () => callback(null)
-  );
+  let unsubProfile: (() => void) | undefined;
+
+  const unsubAuth = onAuthStateChanged(auth, (user) => {
+    if (unsubProfile) {
+      unsubProfile();
+      unsubProfile = undefined;
+    }
+    if (!user) {
+      callback(null);
+      return;
+    }
+    const ref = doc(db, COLLECTION, user.uid);
+    unsubProfile = onSnapshot(
+      ref,
+      (snap) => {
+        callback(profileFromDoc(snap.exists() ? (snap.data() as Record<string, unknown>) : undefined));
+      },
+      () => callback(null)
+    );
+  });
+
+  return () => {
+    unsubAuth();
+    if (unsubProfile) unsubProfile();
+  };
 }
 
 /** Strip undefined so Firestore doesn't reject the document. */
